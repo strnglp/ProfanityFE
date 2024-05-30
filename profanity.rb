@@ -1934,7 +1934,8 @@ Thread.new {
                 prompt_window.label = new_prompt_text
               end
             else
-              need_prompt = true
+              # I also turn this off to stop the double spacing from the look command that runs for my room window
+              need_prompt = false
             end
           elsif xml =~ /^<spell(?:>|\s.*?>)(.*?)<\/spell>$/
             if (window = indicator_handler['spell'])
@@ -2115,6 +2116,7 @@ Thread.new {
                 is_room_name = true
               end
               open_style = { :start => start_pos }
+
               if PRESET[$2]
                 open_style[:fg] = PRESET[$2][0]
                 open_style[:bg] = PRESET[$2][1]
