@@ -2277,5 +2277,7 @@ ensure
     Profanity.log(exception.backtrace)
   end
   Curses.close_screen
-  system("tput reset") # reset the terminal colors
+  if /darwin/ =~ RUBY_PLATFORM
+    system("tput reset") # reset the terminal colors
+  end
 end
