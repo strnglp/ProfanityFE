@@ -41,8 +41,6 @@ require_relative "./ui/countdown.rb"
 require_relative "./ui/indicator.rb"
 require_relative "./ui/progress.rb"
 require_relative "./ui/text.rb"
-require_relative "./ui/exp.rb"
-require_relative "./ui/perc.rb"
 
 require_relative "./plugin/autocomplete.rb"
 require_relative "./settings/settings.rb"
@@ -99,6 +97,8 @@ module Profanity
         --port=<port>                         the port to connect to Lich on
         --default-color-id=<id>               optional override, a terminal palette color number
         --default-background-color-id=<id>    optional override, a terminal palette color number
+        --override-color=<id>                 optional override BG, a color value
+        --override-background=<id>            optional override FG, a color value
         --char=<character>                    character name used in Lich
         --no-status                           do not redraw the process title with status updates
         --links                               enable links to be shown by default, otherwise can enable via .links command
@@ -141,15 +141,17 @@ blue_links = (Opts["links"] ? true : false)
 # those.
 SETTINGS_LOCK               = Mutex.new
 # TODO: fix this dirty, dirty, scumbag hack
-HIGHLIGHT                   = Hilite.pointer()
-PRESET                      = Hash.new
-LAYOUT                      = Hash.new
-WINDOWS                     = Hash.new
-SCROLL_WINDOW               = Array.new
-PORT                        = (Opts.port                           || 8000).to_i
-HOST                        = (Opts.host                           || "127.0.0.1")
-DEFAULT_COLOR_ID            = (Opts["default-color-id"]            || 7).to_i
-DEFAULT_BACKGROUND_COLOR_ID = (Opts["default-background-color-id"] || 0).to_i
+HIGHLIGHT                     = Hilite.pointer()
+PRESET                        = Hash.new
+LAYOUT                        = Hash.new
+WINDOWS                       = Hash.new
+SCROLL_WINDOW                 = Array.new
+PORT                          = (Opts.port                             || 8000).to_i
+HOST                          = (Opts.host                             || "127.0.0.1")
+DEFAULT_COLOR_ID              = (Opts["default-color-id"]              || 7).to_i
+DEFAULT_BACKGROUND_COLOR_ID   = (Opts["default-background-color-id"]   || 0).to_i
+OVERRIDE_COLOR                = (Opts["override-color"]                || "FFFFFF")
+OVERRIDE_BACKGROUND           = (Opts["override-background"]           || "000000")
 if Opts.char
   if Opts.template
     if File.exist?(File.join(File.expand_path(File.dirname(__FILE__)), 'templates', Opts.template.downcase))
@@ -269,16 +271,22 @@ key_name = {
   'num_3'         => 457,
   'num_enter'     => 459,
   'ctrl+delete'   => 513,
-  'alt+down'      => 517,
-  'ctrl+down'     => 519,
-  'alt+left'      => 537,
-  'ctrl+left'     => 539,
   'alt+page_down' => 542,
   'alt+page_up'   => 547,
-  'alt+right'     => 552,
-  'ctrl+right'    => 554,
-  'alt+up'        => 558,
-  'ctrl+up'       => 560,
+
+  # Eleazzar: set the below for wezterm on macOS
+  'alt+up'        => 573,
+  'alt+down'      => 532,
+  'alt+left'      => 552,
+  'alt+right'     => 567,
+
+  'ctrl+up'       => 575,
+  'ctrl+down'     => 534,
+  'ctrl+left'     => 554,
+  'ctrl+right'    => 569,
+
+  'shift+up'      => 337,
+  'shift+down'    => 336,
 }
 
 if CUSTOM_COLORS
@@ -385,7 +393,9 @@ end
 
 # Previously we weren't setting bkgd so it's no wonder it didn't seem to work
 # Had to put this down here under the get_color_pair_id definition
-Curses.bkgd(Curses.color_pair(get_color_pair_id(nil, nil)))
+DEFAULT_COLOR_ID = get_color_id(OVERRIDE_COLOR)
+DEFAULT_BACKGROUND_COLOR_ID = get_color_id(OVERRIDE_BACKGROUND)
+Curses.bkgd(Curses.color_pair(get_color_pair_id(OVERRIDE_COLOR, OVERRIDE_BACKGROUND)))
 Curses.refresh
 
 # Implement support for basic readline-style kill and yank (cut and paste)
@@ -453,7 +463,7 @@ load_layout = proc { |layout_id|
               old_windows.delete(window)
             else
               window = IndicatorWindow.new(height, width, top, left)
-              window.bkgd(Curses.color_pair(get_color_pair_id(nil, nil)))
+              window.bkgd(Curses.color_pair(get_color_pair_id(OVERRIDE_COLOR, OVERRIDE_BACKGROUND)))
             end
             window.layout = [e.attributes['height'], e.attributes['width'], e.attributes['top'], e.attributes['left']]
             window.scrollok(false)
@@ -473,9 +483,9 @@ load_layout = proc { |layout_id|
                 old_windows.delete(window)
               else
                 window = TextWindow.new(height, width - 1, top, left)
-                window.bkgd(Curses.color_pair(get_color_pair_id(nil, nil)))
+                window.bkgd(Curses.color_pair(get_color_pair_id(OVERRIDE_COLOR, OVERRIDE_BACKGROUND)))
                 window.scrollbar = Curses::Window.new(window.maxy, 1, window.begy, window.begx + window.maxx)
-                window.scrollbar.bkgd(Curses.color_pair(get_color_pair_id(nil, nil)))
+                window.scrollbar.bkgd(Curses.color_pair(get_color_pair_id(OVERRIDE_COLOR, OVERRIDE_BACKGROUND)))
               end
               window.layout = [e.attributes['height'], e.attributes['width'], e.attributes['top'], e.attributes['left']]
               window.scrollok(true)
@@ -485,19 +495,13 @@ load_layout = proc { |layout_id|
                 stream_handler[str] = window
               }
             end
-          elsif e.attributes['class'] == 'exp'
-            stream_handler['exp'] = ExpWindow.new(height, width - 1, top, left)
-            stream_handler['exp'].bkgd(Curses.color_pair(get_color_pair_id(nil, nil)))
-          elsif e.attributes['class'] == 'percWindow'
-            stream_handler['percWindow'] = PercWindow.new(height, width - 1, top, left)
-            stream_handler['percWindow'].bkgd(Curses.color_pair(get_color_pair_id(nil, nil)))
           elsif e.attributes['class'] == 'countdown'
             if e.attributes['value'] and (window = previous_countdown_handler[e.attributes['value']])
               previous_countdown_handler[e.attributes['value']] = nil
               old_windows.delete(window)
             else
               window = CountdownWindow.new(height, width, top, left)
-              window.bkgd(Curses.color_pair(get_color_pair_id(nil, nil)))
+              window.bkgd(Curses.color_pair(get_color_pair_id(OVERRIDE_COLOR, OVERRIDE_BACKGROUND)))
             end
             window.layout = [e.attributes['height'], e.attributes['width'], e.attributes['top'], e.attributes['left']]
             window.scrollok(false)
@@ -514,7 +518,7 @@ load_layout = proc { |layout_id|
               old_windows.delete(window)
             else
               window = ProgressWindow.new(height, width, top, left)
-              window.bkgd(Curses.color_pair(get_color_pair_id(nil, nil)))
+              window.bkgd(Curses.color_pair(get_color_pair_id(OVERRIDE_COLOR, OVERRIDE_BACKGROUND)))
             end
             window.layout = [e.attributes['height'], e.attributes['width'], e.attributes['top'], e.attributes['left']]
             window.scrollok(false)
@@ -528,7 +532,7 @@ load_layout = proc { |layout_id|
           elsif e.attributes['class'] == 'command'
             unless command_window
               command_window = Curses::Window.new(height, width, top, left)
-              command_window.bkgd(Curses.color_pair(get_color_pair_id(nil, nil)))
+              command_window.bkgd(Curses.color_pair(get_color_pair_id(OVERRIDE_COLOR, OVERRIDE_BACKGROUND)))
             end
             command_window_layout = [e.attributes['height'], e.attributes['width'], e.attributes['top'], e.attributes['left']]
             command_window.scrollok(false)
@@ -1348,471 +1352,8 @@ Thread.new {
             end
           end
           if (window = stream_handler[current_stream])
-            if current_stream == 'death'
-              # fixme: has been vaporized!
-              # fixme: ~ off to a rough start
-              if text =~ /^\s\*\s(The death cry of )?([7A-Z][a-z]+)(?:['s]*) (just bit the dust!|life on land appears to be as rough as (?:his|her) life at sea\.|just got iced in the Hinterwilds!|is off to a rough start!  (?:He|She) just bit the dust!|echoes in your mind!|just got squashed!|has gone to feed the fishes!|just turned (?:his|her) last page!|is off to a rough start!  (?:He|She) was just put on ice!|was just put on ice!|just punched a one-way ticket!|is going home on (?:his|her) shield!|just took a long walk off of a short pier!|is dust in the wind!|is six hundred feet under!|just lost (?:his|her) way somewhere in the Settlement of Reim!|just gave up the ghost!|flame just burnt out in the Sea of Fire!|failed within the Bank at Bloodriven|was just defeated in Duskruin Arena!|was just defeated during round \d+ in (?:Endless )?Duskruin Arena!|failed to bring a shrubbery to the Night at the Academy!|just sank to the bottom of the (?:Great Western Sea|Tenebrous Cauldron)!|was just defeated in the Arena of the Abyss!)/
-                front_count = 3
-                if $1
-                  front_part = $1
-                  front_count += front_part.length
-                end
-                name = $2
-                area = $3
-                if area =~ /just bit the dust!/
-                  area = "WL"
-                elsif area =~ /echoes in your mind!/
-                  area = "RIFT"
-                elsif area =~ /just got squashed!/
-                  area = "CY"
-                elsif area =~ /has gone to feed the fishes!/
-                  area = "RR"
-                elsif area =~ /life on land appears to be as rough as (?:his|her) life at sea\./
-                  area = "KF"
-                elsif area =~ /just turned (?:his|her) last page!/
-                  area = "TI"
-                elsif area =~ /is off to a rough start!  (?:He|She) was just put on ice!|was just put on ice!/
-                  area = "IMT"
-                elsif area =~ /just sank to the bottom of the (?:Great Western Sea|Tenebrous Cauldron)!/
-                  area = "OSA"
-                elsif area =~ /just gave up the ghost!/
-                  area = "TRAIL"
-                elsif area =~ /just got iced in the Hinterwilds!/
-                  area = "HW"
-                elsif area =~ /just punched a one-way ticket!/
-                  area = "KD"
-                elsif area =~ /is going home on (?:his|her) shield!/
-                  area = "TV"
-                elsif area =~ /just took a long walk off of a short pier!/
-                  area = "SOL"
-                elsif area =~ /is dust in the wind!/
-                  area = "FWI"
-                elsif area =~ /is six hundred feet under!/
-                  area = "ZUL"
-                elsif area =~ /just lost (?:his|her) way somewhere in the Settlement of Reim!/
-                  area = "REIM"
-                elsif area =~ /may just be going home on (?:his|her) shield!/
-                  area = "RED"
-                elsif area =~ /flame just burnt out in the Sea of Fire!/
-                  area = "SOS"
-                elsif area =~ /failed within the Bank at Bloodriven/
-                  area = "DR-B"
-                elsif area =~ /was just defeated in Duskruin Arena!/
-                  area = "DR-A"
-                elsif area =~ /was just defeated during round \d+ in (?:Endless )?Duskruin Arena!/
-                  area = "DR-A"
-                elsif area =~ /was just defeated in the Arena of the Abyss!/
-                  area = "EG-A"
-                elsif area =~ /failed to bring a shrubbery to the Night at the Academy!/
-                  area = "NATA"
-                elsif area =~ /has just returned to Gosaena!/
-                  area = "??"
-                end
-                text = "#{name} #{area} #{Time.now.strftime('%H:%M').sub(/^0/, '')}"
-                line_colors.each { |hl|
-                  hl[:start] -= front_count
-                  hl[:end] = [hl[:end], name.length].min
-                }
-                line_colors.delete_if { |hl| hl[:start] >= hl[:end] }
-                h = {
-                  :start => (name.length + area.length + 2),
-                  :end   => text.length,
-                  :fg    => 'ff0000',
-                }
-                line_colors.push(h)
-              elsif line =~ /^\s\*\s(The death cry of )?([7A-Z][a-z]+)(?:['s]*) (has been vaporized!|was just incinerated!)/
-                text = ""
-              end
-            elsif current_stream == 'speech'
+            if current_stream == 'speech'
               text = "#{text} (#{Time.now.strftime('%H:%M:%S').sub(/^0/, '')})" if Opts["speech-ts"]
-            elsif current_stream == 'logons'
-              foo = { 'joins the adventure.' => PRESET['logons'][0], 'returns home from a hard day of adventuring.' => PRESET['logoffs'][0], 'has disconnected.' => PRESET['disconnects'][0] }
-              joo = { 'joins the adventure.' => PRESET['logons'][1], 'returns home from a hard day of adventuring.' => PRESET['logoffs'][1], 'has disconnected.' => PRESET['disconnects'][1] }
-              if text =~ /^\s\*\s([A-Z][a-z]+) (#{foo.keys.join('|')})/
-                name = $1
-                logon_type = $2
-                text = "#{name} #{Time.now.strftime('%l:%M%P').sub(/^0/, '')}"
-                line_colors.each { |hl|
-                  hl[:start] -= 3
-                  hl[:end] = [hl[:end], name.length].min
-                }
-                line_colors.delete_if { |hl| hl[:start] >= hl[:end] }
-                h = {
-                  :start => (name.length + 1),
-                  :end   => text.length,
-                  :fg    => foo[logon_type],
-                  :bg    => joo[logon_type],
-                }
-                line_colors.push(h)
-              end
-            elsif current_stream == 'exp'
-              window = stream_handler['exp']
-            elsif current_stream == 'percWindow'
-              window = stream_handler['percWindow']
-              all_spells = {
-                'Abandoned Heart'            => 'ABAN',
-                'Absolution'                 => 'Absolution',
-                'Acid Splash'                => 'ACS',
-                'Aegis of Granite'           => 'AEG',
-                'Aesandry Darlaeth'          => 'AD',
-                'Aesrela Everild'            => 'AE',
-                'Aether Cloak'               => 'AC',
-                'Aether Wolves'              => 'AEWO',
-                'Aethrolysis'                => 'Aethrolysis',
-                'Avren Aevareae'             => 'AVA',
-                'Aggressive Stance'          => 'AGS',
-                'Air Bubble'                 => 'AB',
-                'Air Lash'                   => 'ALA',
-                "Alamhif's Gift"             => 'AG',
-                "Albreda's Balm"             => 'ALB',
-                "Anther's Call"              => 'ANC',
-                'Anti-Stun'                  => 'AS',
-                "Arbiter's Stylus"           => 'ARS',
-                'Arc Light'                  => 'AL',
-                "Artificer's Eye"            => 'ART',
-                'Aspects of the All-God'     => 'ALL',
-                "Aspirant's Aegis"           => 'AA',
-                'Athleticism'                => 'Athleticism',
-                'Aura Sight'                 => 'AUS',
-                'Aura of Tongues'            => 'AOT',
-                'Auspice'                    => 'Auspice',
-                'Awaken'                     => 'Awaken',
-                'Awaken Forest'              => 'AF',
-                'Banner of Truce'            => 'BOT',
-                'Bear Strength'              => 'BES',
-                'Beckon the Naga'            => 'BTN',
-                'Benediction'                => 'Benediction',
-                'Blend'                      => 'Blend',
-                'Bless'                      => 'Bless',
-                'Blessing of the Fae'        => 'BOTF',
-                'Bloodthorns'                => 'Bloodthorns',
-                'Blood Burst'                => 'BLB',
-                'Blood Staunching'           => 'BS',
-                'Blufmor Garaen'             => 'BG',
-                'Blur'                       => 'Blur',
-                'Bond Armaments'             => 'BA',
-                "Braun's Conjecture"         => 'BC',
-                'Breath of Storms'           => 'BOS',
-                'Burden'                     => 'Burden',
-                'Burn'                       => 'Burn',
-                "Butcher's Eye"              => 'BUE',
-                'Cage of Light'              => 'CoL',
-                'Calcified Hide'             => 'CH',
-                'Call from Beyond'           => 'CFB',
-                'Calm'                       => 'Calm',
-                'Caress of the Sun'          => 'CARE',
-                'Carrion Call'               => 'CAC',
-                'Centering'                  => 'Centering',
-                'Chain Lightning'            => 'CL',
-                'Cheetah Swiftness'          => 'CS',
-                'Chill Spirit'               => 'CHS',
-                'Circle of Sympathy'         => 'COS',
-                'Clarity'                    => 'Clarity',
-                'Claws of the Cougar'        => 'COTC',
-                'Clear Vision'               => 'CV',
-                'Compel'                     => 'Compel',
-                'Compost'                    => 'Compost',
-                'Consume Flesh'              => 'CF',
-                'Contingency'                => 'Contingency',
-                'Courage'                    => 'CO',
-                'Crystal Dart'               => 'CRD',
-                "Crusader's Challenge"       => 'CRC',
-                'Cure Disease'               => 'CD',
-                'Curse of the Wilds'         => 'COTW',
-                'Curse of Zachriedek'        => 'COZ',
-                "Damaris' Lullaby"           => 'DALU',
-                'Dazzle'                     => 'Dazzle',
-                'Deadfall'                   => 'DF',
-                "Demrris' Resolve"           => 'DMRS',
-                "Desert's Maelstrom"         => 'DEMA',
-                'Destiny Cipher'             => 'DC',
-                'Devitalize'                 => 'DEVI',
-                'Devolve'                    => 'DE',
-                'Devour'                     => 'Devour',
-                'Dispel'                     => 'Dispel',
-                'Distant Gaze'               => 'DG',
-                'Dinazen Olkar'              => 'DO',
-                'Divine Armor'               => 'DA',
-                'Divine Guidance'            => 'DIG',
-                'Divine Radiance'            => 'DR',
-                "Dragon's Breath"            => 'DB',
-                'Drought'                    => 'Drought',
-                'Drums of the Snake'         => 'DRUM',
-                'Ease Burden'                => 'EASE',
-                "Eagle's Cry"                => 'EC',
-                'Earth Meld'                 => 'EM',
-                'Echoes of Aether'           => 'ECHO',
-                "Eillie's Cry"               => 'ECRY',
-                'Elision'                    => 'ELI',
-                'Electrostatic Eddy'         => 'EE',
-                "Emuin's Candlelight"        => 'EMC',
-                'Enrichment'                 => 'ENRICH',
-                'Essence of Yew'             => 'EY',
-                'Ethereal Fissure'           => 'ETF',
-                'Ethereal Shield'            => 'ES',
-                'Eye of Kertigen'            => 'EYE',
-                'Eyes of the Blind'          => 'EOTB',
-                "Eylhaar's Feast"            => 'EF',
-                "Faenella's Grace"           => 'FAE',
-                'Failure of the Forge'       => 'FOTF',
-                'Fire Ball'                  => 'FB',
-                'Fire Rain'                  => 'FR',
-                'Fire Shards'                => 'FS',
-                'Fire of Ushnish'            => 'FOU',
-                'Fists of Faenella'          => 'FF',
-                'Finesse'                    => 'FIN',
-                'Fluoresce'                  => 'Fluoresce',
-                'Flush Poisons'              => 'FP',
-                'Focus Moonbeam'             => 'FM',
-                "Footman's Strike"           => 'FST',
-                "Forestwalker's Boon"        => 'FWB',
-                'Fortress of Ice'            => 'FOI',
-                'Fountain of Creation'       => 'FOC',
-                'Frostbite'                  => 'frostbite',
-                'Frost Scythe'               => 'FRS',
-                'Gam Irnan'                  => 'GI',
-                'Gauge Flow'                 => 'GAF',
-                'Gar Zeng'                   => 'GZ',
-                'Geyser'                     => 'Geyser',
-                'Ghost Shroud'               => 'GHS',
-                'Ghoulflesh'                 => 'Ghoulflesh',
-                'Gift of Life'               => 'GOL',
-                "Glythtide's Gift"           => 'GG',
-                "Glythtide's Joy"            => 'GJ',
-                'Grizzly Claws'              => 'GRIZ',
-                'Grounding Field'            => 'GF',
-                'Guardian Spirit'            => 'GS',
-                'Halo'                       => 'HALO',
-                'Halt'                       => 'Halt',
-                'Hand of Tenemlor'           => 'HOT',
-                'Hands of Justice'           => 'HOJ',
-                'Hands of Lirisa'            => 'HOL',
-                "Harawep's Bonds"            => 'HB',
-                'Harm Evil'                  => 'HE',
-                'Harm Horde'                 => 'HH',
-                'Harmony'                    => 'Harmony',
-                'Heal'                       => 'Heal',
-                'Heal Scars'                 => 'HS',
-                'Heal Wounds'                => 'HW',
-                'Heart Link'                 => 'HL',
-                'Heighten Pain'              => 'HP',
-                'Heroic Strength'            => 'HES',
-                "Hodierna's Lilt"            => 'HODI',
-                'Holy Warrior'               => 'HOW',
-                'Horn of the Black Unicorn'  => 'HORN',
-                "Huldah's Pall"              => 'HULP',
-                'Hydra Hex'                  => 'HYH',
-                'Ice Patch'                  => 'IP',
-                'Icutu Zaharenela'           => 'IZ',
-                "Idon's Theft"               => 'IT',
-                'Ignite'                     => 'Ignite',
-                'Imbue'                      => 'Imbue',
-                'Innocence'                  => 'Innocence',
-                'Instinct'                   => 'INST',
-                'Invocation of the Spheres'  => 'IOTS',
-                'Iron Constitution'          => 'IC',
-                'Iridius Rod'                => 'IR',
-                'Ivory Mask'                 => 'IVM',
-                'Kura-Silma'                 => 'KS',
-                'Last Gift of Vithwok IV'    => 'LGV',
-                'Lay Ward'                   => 'LW',
-                'Lethargy'                   => 'LETHARGY',
-                'Lightning Bolt'             => 'LB',
-                'Locate'                     => 'Locate',
-                "Machinist's Touch"          => 'MT',
-                'Magnetic Ballista'          => 'MAB',
-                'Major Physical Protection'  => 'MAPP',
-                'Malediction'                => 'Malediction',
-                'Manifest Force'             => 'MAF',
-                'Mantle of Flame'            => 'MOF',
-                'Mark of Arhat'              => 'MOA',
-                'Marshal Order'              => 'MO',
-                'Mask of the Moons'          => 'MOM',
-                'Mass Rejuvenation'          => 'MRE',
-                "Membrach's Greed"           => 'MEG',
-                'Memory of Nature'           => 'MON',
-                'Mental Blast'               => 'MB',
-                'Mental Focus'               => 'MEF',
-                "Meraud's Cry"               => 'MC',
-                'Mind Shout'                 => 'MS',
-                'Minor Physical Protection'  => 'MPP',
-                'Misdirection'               => 'MIS',
-                'Moonblade'                  => 'Moonblade',
-                'Moongate'                   => 'MG',
-                "Murrula's Flames"           => 'MF',
-                'Naming of Tears'            => 'NAME',
-                'Necrotic Reconstruction'    => 'NR',
-                'Nexus'                      => 'NEXUS',
-                "Nissa's Binding"            => 'NB',
-                'Nonchalance'                => 'NON',
-                'Noumena'                    => 'NOU',
-                'Oath of the Firstborn'      => 'OATH',
-                'Obfuscation'                => 'Obfuscation',
-                'Osrel Meraud'               => 'OM',
-                "Paeldryth's Wrath"          => 'PW',
-                'Paralysis'                  => 'PARALYSIS',
-                'Partial Displacement'       => 'PD',
-                "Perseverance of Peri'el"    => 'POP',
-                'Persistence of Mana'        => 'POM',
-                'Petrifying Visions'         => 'PV',
-                "Phelim's Sanction"          => 'PS',
-                "Philosopher's Preservation" => 'PHP',
-                'Piercing Gaze'              => 'PG',
-                "Phoenix's Pyre"             => 'PYRE',
-                'Platinum Hands of Kertigen' => 'PHK',
-                'Protection from Evil'       => 'PFE',
-                'Psychic Shield'             => 'PSY',
-                'Quicken the Earth'          => 'QE',
-                'Rage of the Clans'          => 'RAGE',
-                'Raise Power'                => 'RP',
-                'Read the Ripples'           => 'RtR',
-                'Rebuke'                     => 'REB',
-                "Redeemer's Pride"           => 'REPR',
-                'Refractive Field'           => 'RF',
-                'Refresh'                    => 'Refresh',
-                'Regalia'                    => 'REGAL',
-                'Regenerate'                 => 'Regenerate',
-                'Rejuvenation'               => 'REJUV',
-                'Rend'                       => 'rend',
-                "Researcher's Insight"       => 'REI',
-                'Resonance'                  => 'Resonance',
-                'Resurrection'               => 'REZZ',
-                'Revelation'                 => 'Revelation',
-                'Reverse Putrefaction'       => 'RPU',
-                'Riftal Summons'             => 'RS',
-                'Righteous Wrath'            => 'RW',
-                'Rimefang'                   => 'RIM',
-                'Ring of Spears'             => 'ROS',
-                'Rising Mists'               => 'RM',
-                'Rite of Contrition'         => 'ROC',
-                'Rite of Grace'              => 'ROG',
-                'Rite of Forbearance'        => 'ROF',
-                'River in the Sky'           => 'RITS',
-                "Rutilor's Edge"             => 'RUE',
-                'Saesordian Compass'         => 'SCO',
-                'Sanctify Pattern'           => 'SAP',
-                'Sanctuary'                  => 'Sanctuary',
-                'Sanyu Lyba'                 => 'SL',
-                'Seal Cambrinth'             => 'SEC',
-                "Seer's Sense"               => 'SEER',
-                'See the Wind'               => 'STW',
-                'Senses of the Tiger'        => 'SOTT',
-                "Sentinel's Resolve"         => 'SR',
-                'Sever Thread'               => 'SET',
-                'Shadewatch Mirror'          => 'SHM',
-                'Shadow Servant'             => 'SS',
-                'Shadowling'                 => 'Shadowling',
-                'Shadows'                    => 'Shadows',
-                'Shadow Web'                 => 'SHW',
-                'Shatter'                    => 'Shatter',
-                'Shear'                      => 'shear',
-                'Shield of Light'            => 'SOL',
-                'Shift Moonbeam'             => 'SM',
-                'Shockwave'                  => 'Shockwave',
-                'Siphon Vitality'            => 'SV',
-                'Skein of Shadows'           => 'SKS',
-                'Sleep'                      => 'Sleep',
-                'Smite Horde'                => 'SMH',
-                "Soldier's Prayer"           => 'SP',
-                'Soul Ablaze'                => 'SOUL',
-                'Soul Attrition'             => 'SA',
-                'Soul Bonding'               => 'SB',
-                'Soul Shield'                => 'SOS',
-                'Soul Sickness'              => 'SICK',
-                'Sovereign Destiny'          => 'SOD',
-                'Spite of Dergati'           => 'SPIT',
-                'Stampede'                   => 'Stampede',
-                'Starcrash'                  => 'Starcrash',
-                'Starlight Sphere'           => 'SLS',
-                'Stellar Collector'          => 'STC',
-                'Steps of Vuan'              => 'SOV',
-                'Stone Strike'               => 'STS',
-                'Strange Arrow'              => 'STRA',
-                'Stun Foe'                   => 'SF',
-                'Substratum'                 => 'Substratum',
-                'Sure Footing'               => 'SUF',
-                'Swarm'                      => 'Swarm',
-                'Swirling Winds'             => 'SW',
-                'Syamelyo Kuniyo'            => 'SK',
-                'Tailwind'                   => 'TW',
-                'Tangled Fate'               => 'TF',
-                "Tamsine's Kiss"             => 'TK',
-                'Telekinetic Shield'         => 'TKSH',
-                'Telekinetic Storm'          => 'TKS',
-                'Telekinetic Throw'          => 'TKT',
-                'Teleport'                   => 'Teleport',
-                'Tenebrous Sense'            => 'TS',
-                "Tezirah's Veil"             => 'TV',
-                'Thoughtcast'                => 'TH',
-                'Thunderclap'                => 'TC',
-                'Tingle'                     => 'TI',
-                'Trabe Chalice'              => 'TRC',
-                'Tranquility'                => 'Tranquility',
-                'Tremor'                     => 'Tremor',
-                "Truffenyi's Rally"          => 'TR',
-                'Turmar Illumination'        => 'TURI',
-                'Uncurse'                    => 'Uncurse',
-                'Universal Solvent'          => 'USOL',
-                'Unleash'                    => 'Unleash',
-                'Veil of Ice'                => 'VOI',
-                'Vertigo'                    => 'Vertigo',
-                'Vessel of Salvation'        => 'VOS',
-                'Vigil'                      => 'Vigil',
-                'Vigor'                      => 'Vigor',
-                'Viscous Solution'           => 'VS',
-                'Visions of Darkness'        => 'VOD',
-                'Vitality Healing'           => 'VH',
-                'Vivisection'                => 'Vivisection',
-                'Ward Break'                 => 'WB',
-                'Whispers of the Muse'       => 'WOTM',
-                'Whole Displacement'         => 'WD',
-                'Will of Winter'             => 'WILL',
-                'Wisdom of the Pack'         => 'WOTP',
-                'Wolf Scent'                 => 'WS',
-                'Words of the Wind'          => 'WORD',
-                "Worm's Mist"                => 'WORM',
-                "Y'ntrel Sechra"             => 'YS',
-                'Zephyr'                     => 'zephyr'
-              }
-
-              # Reduce lines a bit
-              text.sub!(/ (roisaen|roisan)/, '')
-              text.sub!(/Indefinite/, 'cyclic')
-              text.sub!(/Khri /, '')
-
-              if text.index('(')
-                spell_name = text[0..text.index('(') - 2]
-                # Shorten spell names
-                text.sub!(/^#{spell_name}/, all_spells[spell_name.strip]) if all_spells.include?(spell_name.strip)
-              end
-
-              text.strip!
-
-              SETTINGS_LOCK.synchronize do
-                HIGHLIGHT.each_pair do |regex, colors|
-                  pos = 0
-                  while (match_data = text.match(regex, pos))
-                    h = {
-                      start: match_data.begin(0),
-                      end: match_data.end(0),
-                      fg: colors[0],
-                      bg: colors[1],
-                      ul: colors[2]
-                    }
-                    line_colors.push(h)
-                    pos = match_data.end(0)
-                  end
-                end
-              end
-
-              line_colors.push(
-                start: 0,
-                fg: PRESET[current_stream][0],
-                bg: PRESET[current_stream][1],
-                end: text.length
-              )
-              # window.add_string(text, line_colors)
-              # need_update = true
             end
             unless text =~ /^\[server\]: "(?:kill|connect)/
               window.add_string(text, line_colors)
@@ -1845,21 +1386,39 @@ Thread.new {
               add_prompt(window, prompt_text)
             end
  
+            txt = text.dup
+            lc = line_colors.map(&:dup)
             # don't print any of these updates if we're meant to consume them
             if !(is_room_desc && consume_room_desc) && !(is_room_name && consume_room_name) && !(is_obvious_paths && consume_obvious_paths) && !(is_also_here && consume_also_here)
               # note: add_string can mutate the passed references in some scenarios like indented word wrapping for rooms
               # the side effect is if you spend the same string to mulitple windows, the subsequent call to add_string
               # may receive a truncated string. so we duplicate it to avoid the issue. similarly the line_colors hash
               # may be modified by add_string, so we duplicate that as well.
-              window.add_string(text.dup, line_colors.map(&:dup))
+
+              # make the room name background span the window
+              if is_room_name
+                lc.each do |color|
+                  color[:end] = window.maxx 
+                end
+                txt = txt + " " * (window.maxx - txt.length - 1)
+              end
+              window.add_string(txt, lc)
               need_update = true
             end
 
+            txt = text.dup
+            lc = line_colors.map(&:dup)
             if (room_window = stream_handler['room']) && (is_room_desc || is_room_name || is_obvious_paths || is_also_here)
               if is_room_name
                 room_window.clear_window
                 is_room_name = false
                 consume_room_name = false if consume_room_name
+
+                lc.each do |color|
+                  color[:end] = room_window.maxx 
+                end
+                txt = txt + " " * (room_window.maxx - txt.length - 1)
+
               elsif is_room_desc
                 is_room_desc = false
                 consume_room_desc = false if consume_room_desc 
@@ -1874,7 +1433,7 @@ Thread.new {
               # the side effect is if you spend the same string to mulitple windows, the subsequent call to add_string
               # may receive a truncated string. so we duplicate it to avoid the issue. similarly the line_colors hash
               # may be modified by add_string, so we duplicate that as well.
-              room_window.add_string(text.dup, line_colors.map(&:dup))
+              room_window.add_string(txt, lc)
               need_update = true
             end
           end
@@ -1883,7 +1442,10 @@ Thread.new {
       line_colors = Array.new
       open_monsterbold.clear
       open_preset.clear
-      # open_color.clear
+      # Try turning these on?
+      open_color = Array.new
+      open_link = Array.new
+      open_style = nil
     }
 
     while (line = server.gets)
@@ -2123,16 +1685,9 @@ Thread.new {
               end
             end
           elsif xml =~ /^<(?:pushStream|component|compDef) id=("|')(.*?)\1[^>]*\/?>$/
-            new_stream = $2
-            if new_stream =~ /^exp (\w+\s?\w+?)/
-              current_stream = 'exp'
-              stream_handler['exp'].set_current(Regexp.last_match(1)) if stream_handler['exp']
-            else
-              current_stream = new_stream
-            end
+            current_stream = $2
             game_text = line.slice!(0, start_pos)
             handle_game_text.call(game_text)
-            current_stream = new_stream
             # if the new stream is from room objs and we have a room window open we should update it
             # if we're amidst an update (already consuming) don't start another
             if stream_handler['room'] && (current_stream == "room objs" || current_stream == "room players") && (!consume_room_desc || !consume_room_name || !consume_obvious_paths || !consume_also_here)
@@ -2145,7 +1700,6 @@ Thread.new {
           elsif xml =~ %r{^<popStream(?!/><pushStream)} or xml == '</component>'
             game_text = line.slice!(0, start_pos)
             handle_game_text.call(game_text)
-            stream_handler['exp'].delete_skill if current_stream == 'exp' and stream_handler['exp']
             current_stream = nil
           elsif xml =~ /^<progressBar/
             nil
@@ -2244,6 +1798,9 @@ begin
   key_combo = nil
   loop {
     ch = command_window.getch
+    # if ch
+    #   stream_handler['main'].add_string "KEY: " + ch.to_s
+    # end
     Autocomplete.consume(ch)
     if key_combo
       if key_combo[ch].class == Proc
@@ -2277,7 +1834,7 @@ ensure
     Profanity.log(exception.backtrace)
   end
   Curses.close_screen
-  if /darwin/ =~ RUBY_PLATFORM
+  if RbConfig::CONFIG['host_os'] =~ /darwin/
     system("tput reset") # reset the terminal colors
   end
 end
