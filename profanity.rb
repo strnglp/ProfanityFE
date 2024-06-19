@@ -38,6 +38,7 @@ include Curses
 require_relative "./ext/string.rb"
 
 require_relative "./util/opts.rb"
+require_relative "./util/input.rb"
 require_relative "./ui/countdown.rb"
 require_relative "./ui/indicator.rb"
 require_relative "./ui/progress.rb"
@@ -46,7 +47,6 @@ require_relative "./ui/text.rb"
 require_relative "./plugin/autocomplete.rb"
 require_relative "./settings/settings.rb"
 require_relative "./hilite/hilite.rb"
-
 module Profanity
   LOG_FILE = Settings.file("debug.log")
 
@@ -125,8 +125,7 @@ command_history_pos   = 0
 min_cmd_length_for_history = 4
 $server_time_offset     = 0
 skip_server_time_offset = false
-key_binding = Hash.new
-key_action = Hash.new
+actions = Hash.new
 need_prompt = false
 prompt_text = ">"
 stream_handler = Hash.new
@@ -154,6 +153,7 @@ DEFAULT_BACKGROUND_COLOR_ID   = (Opts["default-background-color-id"]   || 0).to_
 OVERRIDE_COLOR                = (Opts["override-color"]                || "FFFFFF")
 OVERRIDE_BACKGROUND           = (Opts["override-background"]           || "000000")
 if Opts.char
+
   if Opts.template
     if File.exist?(File.join(File.expand_path(File.dirname(__FILE__)), 'templates', Opts.template.downcase))
       SETTINGS_FILENAME = File.join(File.expand_path(File.dirname(__FILE__)), 'templates', Opts.template.downcase)
@@ -187,10 +187,6 @@ end
 
 Profanity.set_terminal_title(Opts.char.capitalize)
 
-unless defined?(CUSTOM_COLORS)
-  CUSTOM_COLORS = Curses.can_change_color?
-end
-
 DEFAULT_COLOR_CODE = Curses.color_content(DEFAULT_COLOR_ID).collect { |num| ((num / 1000.0) * 255).round.to_s(16) }.join('').rjust(6, '0')
 DEFAULT_BACKGROUND_COLOR_CODE = Curses.color_content(DEFAULT_BACKGROUND_COLOR_ID).collect { |num| ((num / 1000.0) * 255).round.to_s(16) }.join('').rjust(6, '0')
 
@@ -203,138 +199,28 @@ xml_escape_list = {
   #  '&#xA'   => "\n",
 }
 
-key_name = {
-  'ctrl+a'        => 1,
-  'ctrl+b'        => 2,
-  #  'ctrl+c'    => 3,
-  'ctrl+d'        => 4,
-  'ctrl+e'        => 5,
-  'ctrl+f'        => 6,
-  'ctrl+g'        => 7,
-  'ctrl+h'        => 8,
-  'win_backspace' => 8,
-  'ctrl+i'        => 9,
-  'tab'           => 9,
-  'ctrl+j'        => 10,
-  'enter'         => 10,
-  'ctrl+k'        => 11,
-  'ctrl+l'        => 12,
-  'return'        => 13,
-  'ctrl+m'        => 13,
-  'ctrl+n'        => 14,
-  'ctrl+o'        => 15,
-  'ctrl+p'        => 16,
-  #  'ctrl+q'    => 17,
-  'ctrl+r'        => 18,
-  #  'ctrl+s'    => 19,
-  'ctrl+t'        => 20,
-  'ctrl+u'        => 21,
-  'ctrl+v'        => 22,
-  'ctrl+w'        => 23,
-  'ctrl+x'        => 24,
-  'ctrl+y'        => 25,
-  'ctrl+z'        => 26,
-  'alt'           => 27,
-  'escape'        => 27,
-  'ctrl+?'        => 127,
-  'down'          => 258,
-  'up'            => 259,
-  'left'          => 260,
-  'right'         => 261,
-  'home'          => 262,
-  'backspace'     => 263,
-  'f1'            => 265,
-  'f2'            => 266,
-  'f3'            => 267,
-  'f4'            => 268,
-  'f5'            => 269,
-  'f6'            => 270,
-  'f7'            => 271,
-  'f8'            => 272,
-  'f9'            => 273,
-  'f10'           => 274,
-  'f11'           => 275,
-  'f12'           => 276,
-  'delete'        => 330,
-  'insert'        => 331,
-  'page_down'     => 338,
-  'page_up'       => 339,
-  'end'           => 360,
-  'resize'        => 410,
-  'num_7'         => 449,
-  'num_8'         => 450,
-  'num_9'         => 451,
-  'num_4'         => 452,
-  'num_5'         => 453,
-  'num_6'         => 454,
-  'num_1'         => 455,
-  'num_2'         => 456,
-  'num_3'         => 457,
-  'num_enter'     => 459,
-  'ctrl+delete'   => 513,
-  'alt+page_down' => 542,
-  'alt+page_up'   => 547,
-
-  # Eleazzar: set the below for wezterm on macOS
-  'alt+up'        => 573,
-  'alt+down'      => 532,
-  'alt+left'      => 552,
-  'alt+right'     => 567,
-
-  'ctrl+up'       => 575,
-  'ctrl+down'     => 534,
-  'ctrl+left'     => 554,
-  'ctrl+right'    => 569,
-
-  'shift+up'      => 337,
-  'shift+down'    => 336,
-}
-
-if CUSTOM_COLORS
-  COLOR_ID_LOOKUP = Hash.new
-  # e.g. code 000000 = id 0
-  COLOR_ID_LOOKUP[DEFAULT_COLOR_CODE] = DEFAULT_COLOR_ID
-  COLOR_ID_LOOKUP[DEFAULT_BACKGROUND_COLOR_CODE] = DEFAULT_BACKGROUND_COLOR_ID
-  COLOR_ID_HISTORY = Array.new
-  for num in 0...Curses.colors
-    unless (num == DEFAULT_COLOR_ID) or (num == DEFAULT_BACKGROUND_COLOR_ID)
-      COLOR_ID_HISTORY.push(num)
-    end
+COLOR_ID_LOOKUP = Hash.new
+# e.g. code 000000 = id 0
+COLOR_ID_LOOKUP[DEFAULT_COLOR_CODE] = DEFAULT_COLOR_ID
+COLOR_ID_LOOKUP[DEFAULT_BACKGROUND_COLOR_CODE] = DEFAULT_BACKGROUND_COLOR_ID
+COLOR_ID_HISTORY = Array.new
+for num in 0...Curses.colors
+  unless (num == DEFAULT_COLOR_ID) or (num == DEFAULT_BACKGROUND_COLOR_ID)
+    COLOR_ID_HISTORY.push(num)
   end
+end
 
-  def get_color_id(code)
-    if (color_id = COLOR_ID_LOOKUP[code])
-      color_id
-    else
-      color_id = COLOR_ID_HISTORY.shift
-      COLOR_ID_LOOKUP.delete_if { |_k, v| v == color_id }
-      sleep 0.01 # somehow this keeps Curses.init_color from failing sometimes
-      Curses.init_color(color_id, ((code[0..1].to_s.hex / 255.0) * 1000).round, ((code[2..3].to_s.hex / 255.0) * 1000).round, ((code[4..5].to_s.hex / 255.0) * 1000).round)
-      COLOR_ID_LOOKUP[code] = color_id
-      COLOR_ID_HISTORY.push(color_id)
-      color_id
-    end
-  end
-else
-  COLOR_CODE = ['000000', '800000', '008000', '808000', '000080', '800080', '008080', 'c0c0c0', '808080', 'ff0000', '00ff00', 'ffff00', '0000ff', 'ff00ff', '00ffff', 'ffffff', '000000', '00005f', '000087', '0000af', '0000d7', '0000ff', '005f00', '005f5f', '005f87', '005faf', '005fd7', '005fff', '008700', '00875f', '008787', '0087af', '0087d7', '0087ff', '00af00', '00af5f', '00af87', '00afaf', '00afd7', '00afff', '00d700', '00d75f', '00d787', '00d7af', '00d7d7', '00d7ff', '00ff00', '00ff5f', '00ff87', '00ffaf', '00ffd7', '00ffff', '5f0000', '5f005f', '5f0087', '5f00af', '5f00d7', '5f00ff', '5f5f00', '5f5f5f', '5f5f87', '5f5faf', '5f5fd7', '5f5fff', '5f8700', '5f875f', '5f8787', '5f87af', '5f87d7', '5f87ff', '5faf00', '5faf5f', '5faf87', '5fafaf', '5fafd7', '5fafff', '5fd700', '5fd75f', '5fd787', '5fd7af', '5fd7d7', '5fd7ff', '5fff00', '5fff5f', '5fff87', '5fffaf', '5fffd7', '5fffff', '870000', '87005f', '870087', '8700af', '8700d7', '8700ff', '875f00', '875f5f', '875f87', '875faf', '875fd7', '875fff', '878700', '87875f', '878787', '8787af', '8787d7', '8787ff', '87af00', '87af5f', '87af87', '87afaf', '87afd7', '87afff', '87d700', '87d75f', '87d787', '87d7af', '87d7d7', '87d7ff', '87ff00', '87ff5f', '87ff87', '87ffaf', '87ffd7', '87ffff', 'af0000', 'af005f', 'af0087', 'af00af', 'af00d7', 'af00ff', 'af5f00', 'af5f5f', 'af5f87', 'af5faf', 'af5fd7', 'af5fff', 'af8700', 'af875f', 'af8787', 'af87af', 'af87d7', 'af87ff', 'afaf00', 'afaf5f', 'afaf87', 'afafaf', 'afafd7', 'afafff', 'afd700', 'afd75f', 'afd787', 'afd7af', 'afd7d7', 'afd7ff', 'afff00', 'afff5f', 'afff87', 'afffaf', 'afffd7', 'afffff', 'd70000', 'd7005f', 'd70087', 'd700af', 'd700d7', 'd700ff', 'd75f00', 'd75f5f', 'd75f87', 'd75faf', 'd75fd7', 'd75fff', 'd78700', 'd7875f', 'd78787', 'd787af', 'd787d7', 'd787ff', 'd7af00', 'd7af5f', 'd7af87', 'd7afaf', 'd7afd7', 'd7afff', 'd7d700', 'd7d75f', 'd7d787', 'd7d7af', 'd7d7d7', 'd7d7ff', 'd7ff00', 'd7ff5f', 'd7ff87', 'd7ffaf', 'd7ffd7', 'd7ffff', 'ff0000', 'ff005f', 'ff0087', 'ff00af', 'ff00d7', 'ff00ff', 'ff5f00', 'ff5f5f', 'ff5f87', 'ff5faf', 'ff5fd7', 'ff5fff', 'ff8700', 'ff875f', 'ff8787', 'ff87af', 'ff87d7', 'ff87ff', 'ffaf00', 'ffaf5f', 'ffaf87', 'ffafaf', 'ffafd7', 'ffafff', 'ffd700', 'ffd75f', 'ffd787', 'ffd7af', 'ffd7d7', 'ffd7ff', 'ffff00', 'ffff5f', 'ffff87', 'ffffaf', 'ffffd7', 'ffffff', '080808', '121212', '1c1c1c', '262626', '303030', '3a3a3a', '444444', '4e4e4e', '585858', '626262', '6c6c6c', '767676', '808080', '8a8a8a', '949494', '9e9e9e', 'a8a8a8', 'b2b2b2', 'bcbcbc', 'c6c6c6', 'd0d0d0', 'dadada', 'e4e4e4', 'eeeeee'][0...Curses.colors]
-  COLOR_ID_LOOKUP = Hash.new
-
-  def get_color_id(code)
-    if (color_id = COLOR_ID_LOOKUP[code])
-      color_id
-    else
-      least_error = nil
-      least_error_id = nil
-      COLOR_CODE.each_index { |color_id|
-        error = ((COLOR_CODE[color_id][0..1].hex - code[0..1].hex)**2) + ((COLOR_CODE[color_id][2..3].hex - code[2..3].hex)**2) + ((COLOR_CODE[color_id][4..6].hex - code[4..6].hex)**2)
-        if least_error.nil? or (error < least_error)
-          least_error = error
-          least_error_id = color_id
-        end
-      }
-      COLOR_ID_LOOKUP[code] = least_error_id
-      least_error_id
-    end
+def get_color_id(code)
+  if (color_id = COLOR_ID_LOOKUP[code])
+    color_id
+  else
+    color_id = COLOR_ID_HISTORY.shift
+    COLOR_ID_LOOKUP.delete_if { |_k, v| v == color_id }
+    sleep 0.01 # somehow this keeps Curses.init_color from failing sometimes
+    Curses.init_color(color_id, ((code[0..1].to_s.hex / 255.0) * 1000).round, ((code[2..3].to_s.hex / 255.0) * 1000).round, ((code[4..5].to_s.hex / 255.0) * 1000).round)
+    COLOR_ID_LOOKUP[code] = color_id
+    COLOR_ID_HISTORY.push(color_id)
+    color_id
   end
 end
 
@@ -378,7 +264,7 @@ def get_color_pair_id(fg_code, bg_code)
   else
     bg_id = get_color_id(bg_code)
   end
-  if (COLOR_PAIR_ID_LOOKUP[fg_id]) and (color_pair_id = COLOR_PAIR_ID_LOOKUP[fg_id][bg_id])
+  if (COLOR_PAIR_ID_LOOKUP[fg_id]) && (color_pair_id = COLOR_PAIR_ID_LOOKUP[fg_id][bg_id])
     color_pair_id
   else
     color_pair_id = COLOR_PAIR_HISTORY.shift
@@ -391,13 +277,6 @@ def get_color_pair_id(fg_code, bg_code)
     color_pair_id
   end
 end
-
-# Previously we weren't setting bkgd so it's no wonder it didn't seem to work
-# Had to put this down here under the get_color_pair_id definition
-DEFAULT_COLOR_ID = get_color_id(OVERRIDE_COLOR)
-DEFAULT_BACKGROUND_COLOR_ID = get_color_id(OVERRIDE_BACKGROUND)
-Curses.bkgd(Curses.color_pair(get_color_pair_id(OVERRIDE_COLOR, OVERRIDE_BACKGROUND)))
-Curses.refresh
 
 # Implement support for basic readline-style kill and yank (cut and paste)
 # commands.  Successive calls to delete_word, backspace_word, kill_forward, and
@@ -457,9 +336,9 @@ load_layout = proc { |layout_id|
           fix_layout_number.call(e.attributes['top']),
           fix_layout_number.call(e.attributes['left'])
 
-        if (height > 0) and (width > 0) and (top >= 0) and (left >= 0) and (top < Curses.lines) and (left < Curses.cols)
+        if (height > 0) && (width > 0) && (top >= 0) && (left >= 0) && (top < Curses.lines) && (left < Curses.cols)
           if e.attributes['class'] == 'indicator'
-            if e.attributes['value'] and (window = previous_indicator_handler[e.attributes['value']])
+            if e.attributes['value'] && (window = previous_indicator_handler[e.attributes['value']])
               previous_indicator_handler[e.attributes['value']] = nil
               old_windows.delete(window)
             else
@@ -479,7 +358,7 @@ load_layout = proc { |layout_id|
             window.redraw
           elsif e.attributes['class'] == 'text'
             if width > 1
-              if e.attributes['value'] and (window = previous_stream_handler[previous_stream_handler.keys.find { |key| e.attributes['value'].split(',').include?(key) }])
+              if e.attributes['value'] && (window = previous_stream_handler[previous_stream_handler.keys.find { |key| e.attributes['value'].split(',').include?(key) }])
                 previous_stream_handler[e.attributes['value']] = nil
                 old_windows.delete(window)
               else
@@ -497,7 +376,7 @@ load_layout = proc { |layout_id|
               }
             end
           elsif e.attributes['class'] == 'countdown'
-            if e.attributes['value'] and (window = previous_countdown_handler[e.attributes['value']])
+            if e.attributes['value'] && (window = previous_countdown_handler[e.attributes['value']])
               previous_countdown_handler[e.attributes['value']] = nil
               old_windows.delete(window)
             else
@@ -514,7 +393,7 @@ load_layout = proc { |layout_id|
             end
             window.update
           elsif e.attributes['class'] == 'progress'
-            if e.attributes['value'] and (window = previous_progress_handler[e.attributes['value']])
+            if e.attributes['value'] && (window = previous_progress_handler[e.attributes['value']])
               previous_progress_handler[e.attributes['value']] = nil
               old_windows.delete(window)
             else
@@ -559,31 +438,58 @@ load_layout = proc { |layout_id|
   end
 }
 
-do_macro = nil
-
-setup_key = proc { |xml, binding|
-  if (key = xml.attributes['id'])
-    if key =~ /^[0-9]+$/
-      key = key.to_i
-    elsif (key.class) == String and (key.length == 1)
-      nil
-    else
-      key = key_name[key]
-    end
-    if key
-      if (macro = xml.attributes['macro'])
-        binding[key] = proc { do_macro.call(macro) }
-      elsif xml.attributes['action'] and (action = key_action[xml.attributes['action']])
-        binding[key] = action
+Input.set_macro_handler(proc { |macro|
+  # fixme: gsub %whatever
+  backslash = false
+  at_pos = nil
+  backfill = nil
+  macro.split('').each_with_index { |ch, i|
+    if backslash
+      if ch == '\\'
+        command_window_put_ch.call('\\')
+      elsif ch == 'x'
+        command_buffer.clear
+        command_buffer_pos = 0
+        command_buffer_offset = 0
+        command_window.deleteln
+        command_window.setpos(0, 0)
+      elsif ch == 'r'
+        at_pos = nil
+        actions['send_command'].call
+      elsif ch == '@'
+        command_window_put_ch.call('@')
+      elsif ch == '?'
+        backfill = i - 3
       else
-        binding[key] ||= Hash.new
-        xml.elements.each { |e|
-          setup_key.call(e, binding[key])
-        }
+        nil
+      end
+      backslash = false
+    else
+      if ch == '\\'
+        backslash = true
+      elsif ch == '@'
+        at_pos = command_buffer_pos
+      else
+        command_window_put_ch.call(ch)
       end
     end
+  }
+  if at_pos
+    while at_pos < command_buffer_pos
+      actions['cursor_left'].call
+    end
+    while at_pos > command_buffer_pos
+      actions['cursor_right'].call
+    end
   end
-}
+  command_window.noutrefresh
+  if backfill then
+    command_window.setpos(0, backfill)
+    command_buffer_pos = backfill
+    backfill = nil
+  end
+  Curses.doupdate
+})
 
 load_settings_file = proc { |reload|
   SETTINGS_LOCK.synchronize {
@@ -594,10 +500,10 @@ load_settings_file = proc { |reload|
           # These are things that we ignore if we're doing a reload of the settings file
           if e.name == 'preset'
             PRESET[e.attributes['id']] = [e.attributes['fg'], e.attributes['bg']]
-          elsif (e.name == 'layout') and (layout_id = e.attributes['id'])
+          elsif (e.name == 'layout') && (layout_id = e.attributes['id'])
             LAYOUT[layout_id] = e
           elsif e.name == 'key'
-            setup_key.call(e, key_binding)
+            Input.load_bindings(e, actions)
           end
         }
       end
@@ -621,60 +527,7 @@ command_window_put_ch = proc { |ch|
   command_window.setpos(0, command_buffer_pos - command_buffer_offset)
 }
 
-do_macro = proc { |macro|
-  # fixme: gsub %whatever
-  backslash = false
-  at_pos = nil
-  backfill = nil
-  macro.split('').each_with_index { |ch, i|
-    if backslash
-      if ch == '\\'
-        command_window_put_ch.call('\\')
-      elsif ch == 'x'
-        command_buffer.clear
-        command_buffer_pos = 0
-        command_buffer_offset = 0
-        command_window.deleteln
-        command_window.setpos(0, 0)
-      elsif ch == 'r'
-        at_pos = nil
-        key_action['send_command'].call
-      elsif ch == '@'
-        command_window_put_ch.call('@')
-      elsif ch == '?'
-        backfill = i - 3
-      else
-        nil
-      end
-      backslash = false
-    else
-      if ch == '\\'
-        backslash = true
-      elsif ch == '@'
-        at_pos = command_buffer_pos
-      else
-        command_window_put_ch.call(ch)
-      end
-    end
-  }
-  if at_pos
-    while at_pos < command_buffer_pos
-      key_action['cursor_left'].call
-    end
-    while at_pos > command_buffer_pos
-      key_action['cursor_right'].call
-    end
-  end
-  command_window.noutrefresh
-  if backfill then
-    command_window.setpos(0, backfill)
-    command_buffer_pos = backfill
-    backfill = nil
-  end
-  Curses.doupdate
-}
-
-key_action['resize'] = proc {
+actions['resize'] = proc {
   # fixme: re-word-wrap
   Curses.clear
   Curses.refresh
@@ -707,8 +560,8 @@ key_action['resize'] = proc {
   Curses.doupdate
 }
 
-key_action['cursor_left'] = proc {
-  if (command_buffer_offset > 0) and (command_buffer_pos - command_buffer_offset == 0)
+actions['cursor_left'] = proc {
+  if (command_buffer_offset > 0) && (command_buffer_pos - command_buffer_offset == 0)
     command_buffer_pos -= 1
     command_buffer_offset -= 1
     command_window.insch(command_buffer[command_buffer_pos])
@@ -720,8 +573,8 @@ key_action['cursor_left'] = proc {
   Curses.doupdate
 }
 
-key_action['cursor_right'] = proc {
-  if ((command_buffer.length - command_buffer_offset) >= (command_window.maxx - 1)) and (command_buffer_pos - command_buffer_offset + 1) >= command_window.maxx
+actions['cursor_right'] = proc {
+  if ((command_buffer.length - command_buffer_offset) >= (command_window.maxx - 1)) && (command_buffer_pos - command_buffer_offset + 1) >= command_window.maxx
     if command_buffer_pos < command_buffer.length
       command_window.setpos(0, 0)
       command_window.delch
@@ -740,7 +593,7 @@ key_action['cursor_right'] = proc {
   Curses.doupdate
 }
 
-key_action['cursor_word_left'] = proc {
+actions['cursor_word_left'] = proc {
   if command_buffer_pos > 0
     if (m = command_buffer[0...(command_buffer_pos - 1)].match(/.*(\w[^\w\s]|\W\w|\s\S)/))
       new_pos = m.begin(1) + 1
@@ -761,7 +614,7 @@ key_action['cursor_word_left'] = proc {
   end
 }
 
-key_action['cursor_word_right'] = proc {
+actions['cursor_word_right'] = proc {
   if command_buffer_pos < command_buffer.length
     if (m = command_buffer[command_buffer_pos..-1].match(/\w[^\w\s]|\W\w|\s\S/))
       new_pos = command_buffer_pos + m.begin(0) + 1
@@ -785,7 +638,7 @@ key_action['cursor_word_right'] = proc {
   end
 }
 
-key_action['cursor_home'] = proc {
+actions['cursor_home'] = proc {
   command_buffer_pos = 0
   command_window.setpos(0, 0)
   for num in 1..command_buffer_offset
@@ -807,7 +660,7 @@ key_action['cursor_home'] = proc {
   Curses.doupdate
 }
 
-key_action['cursor_end'] = proc {
+actions['cursor_end'] = proc {
   if command_buffer.length < (command_window.maxx - 1)
     command_buffer_pos = command_buffer.length
     command_window.setpos(0, command_buffer_pos)
@@ -829,7 +682,7 @@ key_action['cursor_end'] = proc {
   Curses.doupdate
 }
 
-key_action['cursor_backspace'] = proc {
+actions['cursor_backspace'] = proc {
   if command_buffer_pos > 0
     command_buffer_pos -= 1
     if command_buffer_pos == 0
@@ -849,8 +702,8 @@ key_action['cursor_backspace'] = proc {
   end
 }
 
-key_action['cursor_delete'] = proc {
-  if (command_buffer.length > 0) and (command_buffer_pos < command_buffer.length)
+actions['cursor_delete'] = proc {
+  if (command_buffer.length > 0) && (command_buffer_pos < command_buffer.length)
     if command_buffer_pos == 0
       command_buffer = command_buffer[(command_buffer_pos + 1)..-1]
     elsif command_buffer_pos < command_buffer.length
@@ -867,7 +720,7 @@ key_action['cursor_delete'] = proc {
   end
 }
 
-key_action['cursor_backspace_word'] = proc {
+actions['cursor_backspace_word'] = proc {
   num_deleted = 0
   deleted_alnum = false
   deleted_nonspace = false
@@ -879,7 +732,7 @@ key_action['cursor_backspace_word'] = proc {
       num_deleted += 1
       kill_before.call
       kill_buffer = next_char + kill_buffer
-      key_action['cursor_backspace'].call
+      actions['cursor_backspace'].call
       kill_after.call
     else
       break
@@ -887,7 +740,7 @@ key_action['cursor_backspace_word'] = proc {
   end
 }
 
-key_action['cursor_delete_word'] = proc {
+actions['cursor_delete_word'] = proc {
   num_deleted = 0
   deleted_alnum = false
   deleted_nonspace = false
@@ -899,7 +752,7 @@ key_action['cursor_delete_word'] = proc {
       num_deleted += 1
       kill_before.call
       kill_buffer = kill_buffer + next_char
-      key_action['cursor_delete'].call
+      actions['cursor_delete'].call
       kill_after.call
     else
       break
@@ -907,7 +760,7 @@ key_action['cursor_delete_word'] = proc {
   end
 }
 
-key_action['cursor_kill_forward'] = proc {
+actions['cursor_kill_forward'] = proc {
   if command_buffer_pos < command_buffer.length
     kill_before.call
     if command_buffer_pos == 0
@@ -924,7 +777,7 @@ key_action['cursor_kill_forward'] = proc {
   end
 }
 
-key_action['cursor_kill_line'] = proc {
+actions['cursor_kill_line'] = proc {
   if command_buffer.length != 0
     kill_before.call
     kill_buffer = kill_original
@@ -939,11 +792,11 @@ key_action['cursor_kill_line'] = proc {
   end
 }
 
-key_action['cursor_yank'] = proc {
+actions['cursor_yank'] = proc {
   kill_buffer.each_char { |c| command_window_put_ch.call(c) }
 }
 
-key_action['switch_current_window'] = proc {
+actions['switch_current_window'] = proc {
   if (current_scroll_window = TextWindow.list[0])
     current_scroll_window.clear_scrollbar
   end
@@ -955,7 +808,7 @@ key_action['switch_current_window'] = proc {
   Curses.doupdate
 }
 
-key_action['scroll_current_window_up_one'] = proc {
+actions['scroll_current_window_up_one'] = proc {
   if (current_scroll_window = TextWindow.list[0])
     current_scroll_window.scroll(-1)
   end
@@ -963,7 +816,7 @@ key_action['scroll_current_window_up_one'] = proc {
   Curses.doupdate
 }
 
-key_action['scroll_current_window_down_one'] = proc {
+actions['scroll_current_window_down_one'] = proc {
   if (current_scroll_window = TextWindow.list[0])
     current_scroll_window.scroll(1)
   end
@@ -971,7 +824,7 @@ key_action['scroll_current_window_down_one'] = proc {
   Curses.doupdate
 }
 
-key_action['scroll_current_window_up_page'] = proc {
+actions['scroll_current_window_up_page'] = proc {
   if (current_scroll_window = TextWindow.list[0])
     current_scroll_window.scroll(0 - current_scroll_window.maxy + 1)
   end
@@ -979,7 +832,7 @@ key_action['scroll_current_window_up_page'] = proc {
   Curses.doupdate
 }
 
-key_action['scroll_current_window_down_page'] = proc {
+actions['scroll_current_window_down_page'] = proc {
   if (current_scroll_window = TextWindow.list[0])
     current_scroll_window.scroll(current_scroll_window.maxy - 1)
   end
@@ -987,7 +840,7 @@ key_action['scroll_current_window_down_page'] = proc {
   Curses.doupdate
 }
 
-key_action['scroll_current_window_bottom'] = proc {
+actions['scroll_current_window_bottom'] = proc {
   if (current_scroll_window = TextWindow.list[0])
     current_scroll_window.scroll(current_scroll_window.max_buffer_size)
   end
@@ -1001,7 +854,7 @@ write_to_client = proc { |str, color|
   Curses.doupdate
 }
 
-key_action['autocomplete'] = proc { |idx|
+actions['autocomplete'] = proc { |idx|
   Autocomplete.wrap do
     current = command_buffer.dup
     history = command_history.map(&:strip).reject(&:empty?).compact.uniq
@@ -1049,7 +902,7 @@ key_action['autocomplete'] = proc { |idx|
   end
 }
 
-key_action['previous_command'] = proc {
+actions['previous_command'] = proc {
   if command_history_pos < (command_history.length - 1)
     command_history[command_history_pos] = command_buffer.dup
     command_history_pos += 1
@@ -1065,7 +918,7 @@ key_action['previous_command'] = proc {
   end
 }
 
-key_action['next_command'] = proc {
+actions['next_command'] = proc {
   if command_history_pos == 0
     unless command_buffer.empty?
       command_history[command_history_pos] = command_buffer.dup
@@ -1093,17 +946,17 @@ key_action['next_command'] = proc {
   end
 }
 
-key_action['switch_arrow_mode'] = proc {
-  if key_binding[Curses::KEY_UP] == key_action['previous_command']
-    key_binding[Curses::KEY_UP] = key_action['scroll_current_window_up_page']
-    key_binding[Curses::KEY_DOWN] = key_action['scroll_current_window_down_page']
+actions['switch_arrow_mode'] = proc {
+  if Input.key_binding[Curses::KEY_UP] == actions['previous_command']
+    Input.key_binding[Curses::KEY_UP] = actions['scroll_current_window_up_one']
+    Input.key_binding[Curses::KEY_DOWN] = actions['scroll_current_window_down_one']
   else
-    key_binding[Curses::KEY_UP] = key_action['previous_command']
-    key_binding[Curses::KEY_DOWN] = key_action['next_command']
+    Input.key_binding[Curses::KEY_UP] = actions['previous_command']
+    Input.key_binding[Curses::KEY_DOWN] = actions['next_command']
   end
 }
 
-key_action['send_command'] = proc {
+actions['send_command'] = proc {
   cmd = command_buffer.dup
   command_buffer.clear
   command_buffer_pos = 0
@@ -1118,7 +971,7 @@ key_action['send_command'] = proc {
   Curses.doupdate
   command_history_pos = 0
   # Remember all digit commands because they are likely spells for voodoo.lic
-  if (cmd.length >= min_cmd_length_for_history || cmd.digits?) and (cmd != command_history[1])
+  if (cmd.length >= min_cmd_length_for_history || cmd.digits?) && (cmd != command_history[1])
     if command_history[0].nil? or command_history[0].empty?
       command_history[0] = cmd
     else
@@ -1140,20 +993,18 @@ key_action['send_command'] = proc {
   elsif cmd =~ /^\.copy/
     # fixme
   elsif cmd =~ /^\.fixcolor/i
-    if CUSTOM_COLORS
-      COLOR_ID_LOOKUP.each { |code, id|
-        Curses.init_color(id, ((code[0..1].to_s.hex / 255.0) * 1000).round, ((code[2..3].to_s.hex / 255.0) * 1000).round, ((code[4..5].to_s.hex / 255.0) * 1000).round)
-      }
-    end
+    COLOR_ID_LOOKUP.each { |code, id|
+      Curses.init_color(id, ((code[0..1].to_s.hex / 255.0) * 1000).round, ((code[2..3].to_s.hex / 255.0) * 1000).round, ((code[4..5].to_s.hex / 255.0) * 1000).round)
+    }
   elsif cmd =~ /^\.resync/i
     skip_server_time_offset = false
   elsif cmd =~ /^\.reload/i
     load_settings_file.call(true)
   elsif cmd =~ /^\.layout\s+(.+)/
     load_layout.call($1)
-    key_action['resize'].call
+    actions['resize'].call
   elsif cmd =~ /^\.arrow/i
-    key_action['switch_arrow_mode'].call
+    actions['switch_arrow_mode'].call
   elsif cmd =~ /^\.e (.*)/
     eval(cmd.sub(/^\.e /, ''))
   elsif cmd =~ /^\.links/i
@@ -1163,7 +1014,7 @@ key_action['send_command'] = proc {
   end
 }
 
-key_action['send_last_command'] = proc {
+actions['send_last_command'] = proc {
   if (cmd = command_history[1])
     if (window = stream_handler['main'])
       add_prompt(window, prompt_text, cmd)
@@ -1174,15 +1025,13 @@ key_action['send_last_command'] = proc {
     if cmd =~ /^\.quit/i
       exit
     elsif cmd =~ /^\.fixcolor/i
-      if CUSTOM_COLORS
-        COLOR_ID_LOOKUP.each { |code, id|
-          Curses.init_color(id, ((code[0..1].to_s.hex / 255.0) * 1000).round, ((code[2..3].to_s.hex / 255.0) * 1000).round, ((code[4..5].to_s.hex / 255.0) * 1000).round)
-        }
-      end
+      COLOR_ID_LOOKUP.each { |code, id|
+        Curses.init_color(id, ((code[0..1].to_s.hex / 255.0) * 1000).round, ((code[2..3].to_s.hex / 255.0) * 1000).round, ((code[4..5].to_s.hex / 255.0) * 1000).round)
+      }
     elsif cmd =~ /^\.resync/i
       skip_server_time_offset = false
     elsif cmd =~ /^\.arrow/i
-      key_action['switch_arrow_mode'].call
+      actions['switch_arrow_mode'].call
     elsif cmd =~ /^\.e (.*)/
       eval(cmd.sub(/^\.e /, ''))
     else
@@ -1191,7 +1040,7 @@ key_action['send_last_command'] = proc {
   end
 }
 
-key_action['send_second_last_command'] = proc {
+actions['send_second_last_command'] = proc {
   if (cmd = command_history[2])
     if (window = stream_handler['main'])
       add_prompt(window, prompt_text, cmd)
@@ -1202,15 +1051,13 @@ key_action['send_second_last_command'] = proc {
     if cmd =~ /^\.quit/i
       exit
     elsif cmd =~ /^\.fixcolor/i
-      if CUSTOM_COLORS
-        COLOR_ID_LOOKUP.each { |code, id|
-          Curses.init_color(id, ((code[0..1].to_s.hex / 255.0) * 1000).round, ((code[2..3].to_s.hex / 255.0) * 1000).round, ((code[4..5].to_s.hex / 255.0) * 1000).round)
-        }
-      end
+      COLOR_ID_LOOKUP.each { |code, id|
+        Curses.init_color(id, ((code[0..1].to_s.hex / 255.0) * 1000).round, ((code[2..3].to_s.hex / 255.0) * 1000).round, ((code[4..5].to_s.hex / 255.0) * 1000).round)
+      }
     elsif cmd =~ /^\.resync/i
       skip_server_time_offset = false
     elsif cmd =~ /^\.arrow/i
-      key_action['switch_arrow_mode'].call
+      actions['switch_arrow_mode'].call
     elsif cmd =~ /^\.e (.*)/
       eval(cmd.sub(/^\.e /, ''))
     else
@@ -1225,7 +1072,7 @@ new_stun = proc { |seconds|
     window.end_time = temp_stun_end
     window.update
     Thread.new {
-      while (countdown_handler['stunned'].end_time == temp_stun_end) and (countdown_handler['stunned'].value > 0)
+      while (countdown_handler['stunned'].end_time == temp_stun_end) && (countdown_handler['stunned'].value > 0)
         sleep 0.15
         if countdown_handler['stunned'].update
           command_window.noutrefresh
@@ -1236,9 +1083,16 @@ new_stun = proc { |seconds|
   end
 }
 
+# Previously we weren't setting bkgd so it's no wonder it didn't seem to work
+# Had to put this down here under the get_color_pair_id definition
+DEFAULT_COLOR_ID = get_color_id(OVERRIDE_COLOR)
+DEFAULT_BACKGROUND_COLOR_ID = get_color_id(OVERRIDE_BACKGROUND)
+Curses.bkgd(Curses.color_pair(get_color_pair_id(OVERRIDE_COLOR, OVERRIDE_BACKGROUND)))
+Curses.refresh
+
+
 load_settings_file.call(false)
 load_layout.call('default')
-
 TextWindow.list.each { |w| w.maxy.times { w.add_string "\n" } }
 
 server = TCPSocket.open(HOST, PORT)
@@ -1271,7 +1125,7 @@ Thread.new {
             h[:start] -= (escapable.length - 1) if h[:start] > pos
             h[:end] -= (escapable.length - 1) if h[:end] > pos
           }
-          if open_style and (open_style[:start] > pos)
+          if open_style && (open_style[:start] > pos)
             open_style[:start] -= (escapable.length - 1)
           end
         end
@@ -1490,7 +1344,7 @@ Thread.new {
               need_update = true
               Thread.new {
                 sleep 0.15
-                while (countdown_handler['roundtime'].end_time == temp_roundtime_end) and (countdown_handler['roundtime'].value > 0)
+                while (countdown_handler['roundtime'].end_time == temp_roundtime_end) && (countdown_handler['roundtime'].value > 0)
                   sleep 0.15
                   if countdown_handler['roundtime'].update
                     command_window.noutrefresh
@@ -1506,7 +1360,7 @@ Thread.new {
               window.update
               need_update = true
               Thread.new {
-                while (countdown_handler['roundtime'].secondary_end_time == temp_casttime_end) and (countdown_handler['roundtime'].secondary_value > 0)
+                while (countdown_handler['roundtime'].secondary_end_time == temp_casttime_end) && (countdown_handler['roundtime'].secondary_value > 0)
                   sleep 0.15
                   if countdown_handler['roundtime'].update
                     command_window.noutrefresh
@@ -1626,7 +1480,7 @@ Thread.new {
             if $2.empty?
               if open_style
                 open_style[:end] = start_pos
-                if (open_style[:start] < open_style[:end]) and (open_style[:fg] or open_style[:bg])
+                if (open_style[:start] < open_style[:end]) && (open_style[:fg] or open_style[:bg])
                   line_colors.push(open_style)
                 end
                 open_style = nil
@@ -1771,7 +1625,7 @@ Thread.new {
       #
       # delay screen update if there are more game lines waiting
       #
-      if need_update and not IO.select([server], nil, nil, 0.01)
+      if need_update && !IO.select([server], nil, nil, 0.01)
         need_update = false
         command_window.noutrefresh
         Curses.doupdate
@@ -1789,30 +1643,18 @@ Thread.new {
 }
 
 begin
-  key_combo = nil
   loop {
     ch = command_window.getch
     # if ch
     #   stream_handler['main'].add_string "KEY: " + ch.to_s
     # end
     Autocomplete.consume(ch)
-    if key_combo
-      if key_combo[ch].class == Proc
-        key_combo[ch].call
-        key_combo = nil
-      elsif key_combo[ch].class == Hash
-        key_combo = key_combo[ch]
-      else
-        key_combo = nil
+    unless Input.handle_key(ch)
+      if ch.class == String
+        command_window_put_ch.call(ch)
+        command_window.noutrefresh
+        Curses.doupdate
       end
-    elsif key_binding[ch].class == Proc
-      key_binding[ch].call
-    elsif key_binding[ch].class == Hash
-      key_combo = key_binding[ch]
-    elsif ch.class == String
-      command_window_put_ch.call(ch)
-      command_window.noutrefresh
-      Curses.doupdate
     end
   }
 rescue Interrupt # Stop spamming exceptions to my terminal when I'm closing with Ctrl-C
@@ -1829,7 +1671,7 @@ ensure
     Profanity.log(exception.backtrace)
   end
   Curses.close_screen
-  if RbConfig::CONFIG['host_os'] =~ /darwin/
-    system("tput reset") # reset the terminal colors
-  end
+  # if RbConfig::CONFIG['host_os'] =~ /darwin/
+  #   system("tput reset") # reset the terminal colors
+  # end
 end
