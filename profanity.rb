@@ -149,14 +149,11 @@ PRESET                        = Hash.new
 LAYOUT                        = Hash.new
 WINDOWS                       = Hash.new
 SCROLL_WINDOW                 = Array.new
-# DEFAULT_COLOR_ID              = 7
-# DEFAULT_BACKGROUND_COLOR_ID   = 0
-PORT                          = (Opts.port                             || 8000).to_i
-HOST                          = (Opts.host                             || "127.0.0.1")
-DEFAULT_FG_COLOR_CODE                = (Opts["fg-color"]                || "FFFFFF")
-DEAFULT_BG_COLOR_CODE           = (Opts["bg-color"]           || "000000")
+PORT                          = (Opts.port           || 8000).to_i
+HOST                          = (Opts.host           || "127.0.0.1")
+DEFAULT_FG_COLOR_CODE         = (Opts["fg-color"]    || "FFFFFF")
+DEAFULT_BG_COLOR_CODE         = (Opts["bg-color"]    || "000000")
 if Opts.char
-
   if Opts.template
     if File.exist?(File.join(File.expand_path(File.dirname(__FILE__)), 'templates', Opts.template.downcase))
       SETTINGS_FILENAME = File.join(File.expand_path(File.dirname(__FILE__)), 'templates', Opts.template.downcase)
