@@ -96,10 +96,8 @@ module Profanity
       Profanity FrontEnd
       #{'  '}
         --port=<port>                         the port to connect to Lich on
-        --default-color-id=<id>               optional override, a terminal palette color number
-        --default-background-color-id=<id>    optional override, a terminal palette color number
-        --override-color=<id>                 optional override BG, a color value
-        --override-background=<id>            optional override FG, a color value
+        --fg-color=<id>                 optional override BG, a hex color value
+        --bg-color=<id>            optional override FG, a hex color value
         --char=<character>                    character name used in Lich
         --no-status                           do not redraw the process title with status updates
         --links                               enable links to be shown by default, otherwise can enable via .links command
@@ -115,6 +113,15 @@ Curses.init_screen
 Curses.start_color
 Curses.cbreak
 Curses.noecho
+
+xml_escape_list = {
+  '&lt;'   => '<',
+  '&gt;'   => '>',
+  '&quot;' => '"',
+  '&apos;' => "'",
+  '&amp;'  => '&',
+  #  '&#xA'   => "\n",
+}
 
 server = nil
 command_buffer        = String.new
@@ -146,12 +153,12 @@ PRESET                        = Hash.new
 LAYOUT                        = Hash.new
 WINDOWS                       = Hash.new
 SCROLL_WINDOW                 = Array.new
+# DEFAULT_COLOR_ID              = 7
+# DEFAULT_BACKGROUND_COLOR_ID   = 0
 PORT                          = (Opts.port                             || 8000).to_i
 HOST                          = (Opts.host                             || "127.0.0.1")
-DEFAULT_COLOR_ID              = (Opts["default-color-id"]              || 7).to_i
-DEFAULT_BACKGROUND_COLOR_ID   = (Opts["default-background-color-id"]   || 0).to_i
-OVERRIDE_COLOR                = (Opts["override-color"]                || "FFFFFF")
-OVERRIDE_BACKGROUND           = (Opts["override-background"]           || "000000")
+DEFAULT_FG_COLOR_CODE                = (Opts["fg-color"]                || "FFFFFF")
+DEAFULT_BG_COLOR_CODE           = (Opts["bg-color"]           || "000000")
 if Opts.char
 
   if Opts.template
@@ -187,27 +194,10 @@ end
 
 Profanity.set_terminal_title(Opts.char.capitalize)
 
-DEFAULT_COLOR_CODE = Curses.color_content(DEFAULT_COLOR_ID).collect { |num| ((num / 1000.0) * 255).round.to_s(16) }.join('').rjust(6, '0')
-DEFAULT_BACKGROUND_COLOR_CODE = Curses.color_content(DEFAULT_BACKGROUND_COLOR_ID).collect { |num| ((num / 1000.0) * 255).round.to_s(16) }.join('').rjust(6, '0')
-
-xml_escape_list = {
-  '&lt;'   => '<',
-  '&gt;'   => '>',
-  '&quot;' => '"',
-  '&apos;' => "'",
-  '&amp;'  => '&',
-  #  '&#xA'   => "\n",
-}
-
 COLOR_ID_LOOKUP = Hash.new
-# e.g. code 000000 = id 0
-COLOR_ID_LOOKUP[DEFAULT_COLOR_CODE] = DEFAULT_COLOR_ID
-COLOR_ID_LOOKUP[DEFAULT_BACKGROUND_COLOR_CODE] = DEFAULT_BACKGROUND_COLOR_ID
 COLOR_ID_HISTORY = Array.new
 for num in 0...Curses.colors
-  unless (num == DEFAULT_COLOR_ID) or (num == DEFAULT_BACKGROUND_COLOR_ID)
-    COLOR_ID_HISTORY.push(num)
-  end
+  COLOR_ID_HISTORY.push(num)
 end
 
 def get_color_id(code)
@@ -216,7 +206,7 @@ def get_color_id(code)
   else
     color_id = COLOR_ID_HISTORY.shift
     COLOR_ID_LOOKUP.delete_if { |_k, v| v == color_id }
-    sleep 0.01 # somehow this keeps Curses.init_color from failing sometimes
+    # sleep 0.01 # somehow this keeps Curses.init_color from failing sometimes
     Curses.init_color(color_id, ((code[0..1].to_s.hex / 255.0) * 1000).round, ((code[2..3].to_s.hex / 255.0) * 1000).round, ((code[4..5].to_s.hex / 255.0) * 1000).round)
     COLOR_ID_LOOKUP[code] = color_id
     COLOR_ID_HISTORY.push(color_id)
@@ -224,29 +214,11 @@ def get_color_id(code)
   end
 end
 
-# COLOR_PAIR_LIST = Array.new
-# for num in 1...Curses::color_pairs
-#  COLOR_PAIR_LIST.push h={ :color_id => nil, :background_id => nil, :id => num }
-# end
-
-# 157+12+1 = 180
-# 38+1+6 = 45
-# 32767
+DEFAULT_COLOR_ID = get_color_id(DEFAULT_FG_COLOR_CODE)
+DEFAULT_BACKGROUND_COLOR_ID = get_color_id(DEAFULT_BG_COLOR_CODE)
 
 COLOR_PAIR_ID_LOOKUP = Hash.new
 COLOR_PAIR_HISTORY = Array.new
-
-# fixme: high color pair id's change text?
-# A_NORMAL = 0
-# A_STANDOUT = 65536
-# A_UNDERLINE = 131072
-# 15000 = black background, dark blue-green text
-# 10000 = dark yellow background, black text
-#  5000 = black
-#  2000 = black
-#  1000 = highlights show up black
-#   100 = normal
-#   500 = black and some underline
 
 for num in 1...Curses::color_pairs # fixme: things go to hell at about pair 256
   # for num in 1...([Curses::color_pairs, 256].min)
@@ -277,6 +249,11 @@ def get_color_pair_id(fg_code, bg_code)
     color_pair_id
   end
 end
+
+# Previously we weren't setting bkgd so it's no wonder it didn't seem to work
+# Had to put this down here under the get_color_pair_id definition
+Curses.bkgd(Curses.color_pair(get_color_pair_id(DEFAULT_FG_COLOR_CODE, DEAFULT_BG_COLOR_CODE)))
+Curses.refresh
 
 # Implement support for basic readline-style kill and yank (cut and paste)
 # commands.  Successive calls to delete_word, backspace_word, kill_forward, and
@@ -343,7 +320,7 @@ load_layout = proc { |layout_id|
               old_windows.delete(window)
             else
               window = IndicatorWindow.new(height, width, top, left)
-              window.bkgd(Curses.color_pair(get_color_pair_id(OVERRIDE_COLOR, OVERRIDE_BACKGROUND)))
+              window.bkgd(Curses.color_pair(get_color_pair_id(DEFAULT_FG_COLOR_CODE, DEAFULT_BG_COLOR_CODE)))
             end
             window.layout = [e.attributes['height'], e.attributes['width'], e.attributes['top'], e.attributes['left']]
             window.scrollok(false)
@@ -363,9 +340,9 @@ load_layout = proc { |layout_id|
                 old_windows.delete(window)
               else
                 window = TextWindow.new(height, width - 1, top, left)
-                window.bkgd(Curses.color_pair(get_color_pair_id(OVERRIDE_COLOR, OVERRIDE_BACKGROUND)))
+                window.bkgd(Curses.color_pair(get_color_pair_id(DEFAULT_FG_COLOR_CODE, DEAFULT_BG_COLOR_CODE)))
                 window.scrollbar = Curses::Window.new(window.maxy, 1, window.begy, window.begx + window.maxx)
-                window.scrollbar.bkgd(Curses.color_pair(get_color_pair_id(OVERRIDE_COLOR, OVERRIDE_BACKGROUND)))
+                window.scrollbar.bkgd(Curses.color_pair(get_color_pair_id(DEFAULT_FG_COLOR_CODE, DEAFULT_BG_COLOR_CODE)))
               end
               window.layout = [e.attributes['height'], e.attributes['width'], e.attributes['top'], e.attributes['left']]
               window.scrollok(true)
@@ -381,7 +358,7 @@ load_layout = proc { |layout_id|
               old_windows.delete(window)
             else
               window = CountdownWindow.new(height, width, top, left)
-              window.bkgd(Curses.color_pair(get_color_pair_id(OVERRIDE_COLOR, OVERRIDE_BACKGROUND)))
+              window.bkgd(Curses.color_pair(get_color_pair_id(DEFAULT_FG_COLOR_CODE, DEAFULT_BG_COLOR_CODE)))
             end
             window.layout = [e.attributes['height'], e.attributes['width'], e.attributes['top'], e.attributes['left']]
             window.scrollok(false)
@@ -398,7 +375,7 @@ load_layout = proc { |layout_id|
               old_windows.delete(window)
             else
               window = ProgressWindow.new(height, width, top, left)
-              window.bkgd(Curses.color_pair(get_color_pair_id(OVERRIDE_COLOR, OVERRIDE_BACKGROUND)))
+              window.bkgd(Curses.color_pair(get_color_pair_id(DEFAULT_FG_COLOR_CODE, DEAFULT_BG_COLOR_CODE)))
             end
             window.layout = [e.attributes['height'], e.attributes['width'], e.attributes['top'], e.attributes['left']]
             window.scrollok(false)
@@ -412,7 +389,7 @@ load_layout = proc { |layout_id|
           elsif e.attributes['class'] == 'command'
             unless command_window
               command_window = Curses::Window.new(height, width, top, left)
-              command_window.bkgd(Curses.color_pair(get_color_pair_id(OVERRIDE_COLOR, OVERRIDE_BACKGROUND)))
+              command_window.bkgd(Curses.color_pair(get_color_pair_id(DEFAULT_FG_COLOR_CODE, DEAFULT_BG_COLOR_CODE)))
             end
             command_window_layout = [e.attributes['height'], e.attributes['width'], e.attributes['top'], e.attributes['left']]
             command_window.scrollok(false)
@@ -1082,14 +1059,6 @@ new_stun = proc { |seconds|
     }
   end
 }
-
-# Previously we weren't setting bkgd so it's no wonder it didn't seem to work
-# Had to put this down here under the get_color_pair_id definition
-DEFAULT_COLOR_ID = get_color_id(OVERRIDE_COLOR)
-DEFAULT_BACKGROUND_COLOR_ID = get_color_id(OVERRIDE_BACKGROUND)
-Curses.bkgd(Curses.color_pair(get_color_pair_id(OVERRIDE_COLOR, OVERRIDE_BACKGROUND)))
-Curses.refresh
-
 
 load_settings_file.call(false)
 load_layout.call('default')
