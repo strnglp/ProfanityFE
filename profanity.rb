@@ -1611,6 +1611,7 @@ Thread.new {
 begin
   loop {
     ch = command_window.getch
+    # testing key inputs
     # if ch
     #   stream_handler['main'].add_string "KEY: " + ch.to_s
     # end
@@ -1637,7 +1638,4 @@ ensure
     Profanity.log(exception.backtrace)
   end
   Curses.close_screen
-  # if RbConfig::CONFIG['host_os'] =~ /darwin/
-  #   system("tput reset") # reset the terminal colors
-  # end
 end
