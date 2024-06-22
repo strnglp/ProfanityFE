@@ -1174,7 +1174,18 @@ Thread.new {
         room_players = Profanity.fetch('room players')
         room_exits = Profanity.fetch('room exits')
         window.clear_window
-        window.add_string(room[0].dup, room[1].map(&:dup)) if room
+
+        # colorize the full line for room names in the room window
+        # TODO: turn this into a function since we do it again in the main window
+        if room
+          room_name = room[0].dup
+          room_name = room_name + " " * (window.maxx - room_name.length - 1)
+          room_name_colors = room[1].map(&:dup)
+          room_name_colors.each do |color|
+            color[:end] = window.maxx
+          end
+          window.add_string(room_name, room_name_colors)
+        end
         window.add_string(room_desc[0].dup.sub(/ You also see.*/, ''), room_desc[1].map(&:dup)) if room_desc
         window.add_string(room_objs[0].dup, room_objs[1].map(&:dup)) if room_objs and !room_objs[0].empty?
         window.add_string(room_players[0].dup, room_players[1].map(&:dup)) if room_players and !room_players[0].empty?
@@ -1222,6 +1233,19 @@ Thread.new {
             if need_prompt
               need_prompt = false
               add_prompt(window, prompt_text)
+            end
+
+            # colorize the full line for room names in the main window
+            room = Profanity.fetch('roomName', [nil,nil])
+            if text.start_with?(room[0])
+              room_name = room[0].dup
+              room_name = room_name + " " * (window.maxx - room_name.length - 1)
+              room_name_colors = room[1].map(&:dup)
+              room_name_colors.each do |color|
+                color[:end] = window.maxx
+              end
+              text = room_name
+              line_colors = room_name_colors
             end
             window.add_string(text, line_colors)
             need_update = true
