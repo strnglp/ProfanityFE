@@ -1402,7 +1402,7 @@ Thread.new {
 
             # colorize the full line for room names in the main window
             room = Profanity.fetch('roomName', [nil,nil])
-            room_name = room[0].dup
+            room_name = room.nil? ? nil : room[0].dup
             if text && room_name && text.start_with?(room_name)
               room_name = room_name + " " * (window.maxx - room_name.length - 1)
               room_name_colors = room[1].map(&:dup)
