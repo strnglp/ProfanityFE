@@ -1257,10 +1257,6 @@ Thread.new {
     open_link = Array.new
     current_stream = nil
     multi_stream = Set.new
-<<<<<<< HEAD
-
-=======
->>>>>>> 51c5626 (Reworked room window - no longer spams "look")
 
     handle_game_text = proc { |text|
       for escapable in xml_escape_list.keys
@@ -1402,6 +1398,19 @@ Thread.new {
             if need_prompt
               need_prompt = false
               add_prompt(window, prompt_text)
+            end
+
+            # colorize the full line for room names in the main window
+            room = Profanity.fetch('roomName', [nil,nil])
+            room_name = room[0].dup
+            if text && room_name && text.start_with?(room_name)
+              room_name = room_name + " " * (window.maxx - room_name.length - 1)
+              room_name_colors = room[1].map(&:dup)
+              room_name_colors.each do |color|
+                color[:end] = window.maxx
+              end
+              text = room_name
+              line_colors = room_name_colors
             end
             window.add_string(text, line_colors)
             need_update = true
