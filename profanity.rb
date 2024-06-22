@@ -1257,7 +1257,10 @@ Thread.new {
     open_link = Array.new
     current_stream = nil
     multi_stream = Set.new
+<<<<<<< HEAD
 
+=======
+>>>>>>> 51c5626 (Reworked room window - no longer spams "look")
 
     handle_game_text = proc { |text|
       for escapable in xml_escape_list.keys
@@ -1337,7 +1340,6 @@ Thread.new {
           }
         }
       end
-
 
       # if there is a room window available and we're being sent room data. care has been taken to bring
       # the colors that are computed for the main window into this room window correctly
@@ -1814,6 +1816,7 @@ begin
     end
   }
 rescue Interrupt # Stop spamming exceptions to my terminal when I'm closing with Ctrl-C
+  $stderr.puts("Profanity interrupted!")
 rescue => exception
   Profanity.log(exception.message)
   Profanity.log(exception.backtrace)
