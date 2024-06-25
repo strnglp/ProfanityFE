@@ -21,7 +21,6 @@
 
 =end
 
-require 'set'
 require 'json'
 require 'benchmark'
 require 'socket'
@@ -337,6 +336,7 @@ load_layout = proc { |layout_id|
                 window.scrollbar = Curses::Window.new(window.maxy, 1, window.begy, window.begx + window.maxx)
                 window.scrollbar.bkgd(Curses.color_pair(get_color_pair_id(DEFAULT_FG_COLOR_CODE, DEAFULT_BG_COLOR_CODE)))
               end
+
               window.layout = [e.attributes['height'], e.attributes['width'], e.attributes['top'], e.attributes['left']]
               window.scrollok(true)
               window.max_buffer_size = e.attributes['buffer-size'] || 1000
@@ -1166,7 +1166,6 @@ Thread.new {
         room_players = Profanity.fetch('room players')
         room_exits = Profanity.fetch('room exits')
         window.clear_window
-
         # colorize the full line for room names in the room window
         # TODO: turn this into a function since we do it again in the main window
         if room
@@ -1208,14 +1207,12 @@ Thread.new {
               if PRESET[current_stream]
                 line_colors.push(:start => 0, :fg => PRESET[current_stream][0], :bg => PRESET[current_stream][1], :end => text.length)
               end
-              unless text.empty?
-                if need_prompt
-                  need_prompt = false
-                  add_prompt(window, prompt_text)
-                end
-                window.add_string(text, line_colors)
-                need_update = true
+              if need_prompt
+                need_prompt = false
+                add_prompt(window, prompt_text)
               end
+              window.add_string(text, line_colors)
+              need_update = true
             end
           else
             # stream_handler['main'].add_string "#{current_stream}: #{text.inspect}"
