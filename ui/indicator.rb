@@ -11,7 +11,7 @@ class IndicatorWindow < Curses::Window
   attr_reader :label, :value
 
   def label=(str)
-    @label = str
+    @label = str.center(maxx)
     redraw
   end
 
