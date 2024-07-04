@@ -84,6 +84,15 @@ module Input
     'shift+down'    => 336,
   }
 
+  # TODO make this more dynamic, not all keylayouts will be the same
+  if RbConfig::CONFIG['host_os'] !~ /darwin/
+    KEY_NAME['ctrl+up'] = 571
+    KEY_NAME['ctrl+down'] = 530
+    KEY_NAME['ctrl+left'] = 550
+    KEY_NAME['ctrl+right'] = 565
+    KEY_NAME['ctrl_backspace'] = 8
+  end
+
   @key_binding = Hash.new
   @key_combo = nil
   @do_macro = nil
