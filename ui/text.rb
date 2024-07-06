@@ -84,7 +84,8 @@ class TextWindow < Curses::Window
       end
     end
   end
-
+  
+  
   def add_string(string, string_colors = Array.new)
     #
     # word wrap string, split highlights if needed so each wrapped line is independent, update buffer, update window if needed
