@@ -42,6 +42,7 @@ module Input
     'home'          => 262,
     'backspace'     => 263,
     'f1'            => 265,
+    'ctrl_backspace'=> 265,
     'f2'            => 266,
     'f3'            => 267,
     'f4'            => 268,
