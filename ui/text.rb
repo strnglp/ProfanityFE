@@ -44,11 +44,31 @@ class TextWindow < Curses::Window
       if relevant_colors.empty?
         addstr str
       else
+        # Monsterbold should trump specific highlights because links tend to hide them
+        mb = relevant_colors.find {|h| h[:monsterbold] == true } 
+        mb_fg = nil
+        mb_bg = nil
+        mb_pri = -Float::INFINITY
+        if mb then
+          mb_fg = mb&.[](:fg)
+          mb_bg = mb&.[](:bg)
+          mb_pri = mb&.[](:priority)
+        end
         # If there are values specific to this segment, use the highest priority ones
         specific_colors = relevant_colors.select { |h| h[:start] && h[:end] && h[:start] == start_idx && h[:end] == end_idx }
         sorted_colors = specific_colors.sort_by { |h| -(h[:priority] || Float::INFINITY) }
-        fg = sorted_colors.find { |h| h[:fg] }&.[](:fg)
-        bg = sorted_colors.find { |h| h[:bg] }&.[](:bg)
+        first_fg = sorted_colors.find { |h| h[:fg] }
+        if first_fg && (first_fg.fetch(:priority, -Float::INFINITY) > mb_pri)
+          fg = first_fg&.[](:fg)
+        else
+          fg = mb_fg
+        end
+        first_bg = sorted_colors.find { |h| h[:bg] }
+        if first_bg && (first_bg.fetch(:priority, -Float::INFINITY) > mb_pri)
+          bg = first_bg&.[](:bg)
+        else
+          bg = mb_bg
+        end
 
         # If there are no values specific to this segment, use the highest priority non-specific spanning color
         if fg == nil || bg == nil then

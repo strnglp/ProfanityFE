@@ -1421,7 +1421,8 @@ Thread.new {
             if PRESET['monsterbold']
               h[:fg] = PRESET['monsterbold'][0]
               h[:bg] = PRESET['monsterbold'][1]
-              h[:priority] = 1
+              h[:priority] = 2
+              h[:monsterbold] = true # useful only in ui/text.rb for breaking ties with links
             end
             open_monsterbold.push(h)
           elsif xml == '<popBold/>' or xml == '</b>'
@@ -1571,8 +1572,7 @@ Thread.new {
               h = { :start => start_pos }
               h[:fg] = PRESET['links'][0]
               h[:bg] = PRESET['links'][1]
-              # todo: should this be priority 1 so a monster retains monsterbold rather than a link color?
-              h[:priority] = 2
+              h[:priority] = 1
               open_link.push(h)
             end
           elsif xml == '</a>'
