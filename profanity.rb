@@ -1592,18 +1592,41 @@ Thread.new {
           end
         end
 
-        # don't be disruptive to existing flow
-        prev_colors = line_colors.map(&:dup)
-        prev_stream = current_stream
-        # some windows (e.g. room) want a mirror of the data that appears in 'main'
-        for stream in multi_stream
-          current_stream = stream
-          handle_game_text.call(line.dup)
-        end
-        multi_stream.clear
+        # only do this stuff if there is a room handler
+        if stream_handler['room']
+          # don't be disruptive to existing flow
+          prev_colors = line_colors.map(&:dup)
+          prev_stream = current_stream
+          room_line = nil
+          # some windows (e.g. room) want a mirror of the data that appears in 'main'
+          multi_stream.each do |stream|
+            current_stream = stream
+            room_line = line.dup if current_stream == "roomDesc" # holding onto this for removal from 'main'
+            handle_game_text.call(line.dup)
+          end
+          multi_stream.clear
 
-        current_stream = prev_stream
-        line_colors = prev_colors
+          current_stream = prev_stream
+          line_colors = prev_colors
+
+          # I don't like having the roomDesc in the main window if I have a room window
+          if line == room_line
+            room_objs = line.sub(/.*?You also see/, 'You also see')
+            if room_objs == line
+              line = ""
+              line_colors.clear
+            else
+              removed_length = line.length - room_objs.length
+              line_colors.select! { |color| color[:start] >= removed_length }
+              line_colors.each do |color|
+                color[:start] -= removed_length
+                color[:end] -= removed_length
+              end
+              line = room_objs
+            end
+          end
+        end
+
         handle_game_text.call(line)
       end
       #
