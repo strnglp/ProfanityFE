@@ -28,7 +28,6 @@ require 'rexml/document'
 require 'curses'
 require 'fileutils'
 require 'ostruct'
-include Curses
 
 require_relative "./ext/string.rb"
 

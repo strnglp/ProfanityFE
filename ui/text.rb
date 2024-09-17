@@ -78,7 +78,7 @@ class TextWindow < Curses::Window
         end
 
         ul = sorted_colors.any? { |h| h[:ul] == "true" }
-        attron(color_pair(get_color_pair_id(fg, bg)) | (ul ? Curses::A_UNDERLINE : Curses::A_NORMAL)) do
+        attron(Curses.color_pair(get_color_pair_id(fg, bg)) | (ul ? Curses::A_UNDERLINE : Curses::A_NORMAL)) do
           addstr str
         end
       end
