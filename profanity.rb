@@ -1218,11 +1218,8 @@ new_stun = proc { |seconds|
 
 # Previously we weren't setting bkgd so it's no wonder it didn't seem to work
 # Had to put this down here under the get_color_pair_id definition
-DEFAULT_COLOR_ID = get_color_id(OVERRIDE_COLOR)
-DEFAULT_BACKGROUND_COLOR_ID = get_color_id(OVERRIDE_BACKGROUND)
-Curses.bkgd(Curses.color_pair(get_color_pair_id(OVERRIDE_COLOR, OVERRIDE_BACKGROUND)))
+Curses.bkgd(Curses.color_pair(get_color_pair_id(DEFAULT_FG_COLOR_CODE, DEAFULT_BG_COLOR_CODE)))
 Curses.refresh
-
 
 load_settings_file.call(false)
 load_layout.call('default')
@@ -1361,7 +1358,7 @@ Thread.new {
             if text =~ /^\[.+?\]\-[A-z]+\:[A-Z][a-z]+\: "|^\[server\]\: /
               current_stream = 'lnet'
             end
-          end 
+          end
           if (window = stream_handler[current_stream])
             if current_stream == 'speech'
               text = "#{text} (#{Time.now.strftime('%H:%M:%S').sub(/^0/, '')})" if Opts["speech-ts"]
