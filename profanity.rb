@@ -636,7 +636,7 @@ load_settings_file = proc { |reload|
           elsif (e.name == 'layout') && (layout_id = e.attributes['id'])
             LAYOUT[layout_id] = e
           elsif e.name == 'key'
-            Input.load_bindings(e, actions)
+            setup_key.call(e, key_binding)
           end
         }
       end
@@ -1790,10 +1790,6 @@ Thread.new {
             end
           end
         end
-        multi_stream.clear
-
-        current_stream = prev_stream
-        line_colors = prev_colors
         handle_game_text.call(line)
       end
       #
@@ -1817,6 +1813,7 @@ Thread.new {
 }
 
 begin
+  key_combo = nil
   loop {
     ch = command_window.getch
     # testing key inputs
