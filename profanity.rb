@@ -273,6 +273,12 @@ key_name = {
 
   'shift+up'      => 337,
   'shift+down'    => 336,
+  # Eleazzar: alt [27], "v".ord [118], added 0 between to avoid collisions
+  'alt+b'         => 27098,
+  'alt+d'         => 270100,
+  'alt+f'         => 270102,
+  'alt+o'         => 270111,
+  'alt+v'         => 270118,
 }
 
 COLOR_ID_LOOKUP = Hash.new
@@ -402,9 +408,9 @@ load_layout = proc { |layout_id|
         height, width, top, left = fix_layout_number.call(
           e.attributes['height']
         ),
-          fix_layout_number.call(e.attributes['width']),
-          fix_layout_number.call(e.attributes['top']),
-          fix_layout_number.call(e.attributes['left'])
+        fix_layout_number.call(e.attributes['width']),
+        fix_layout_number.call(e.attributes['top']),
+        fix_layout_number.call(e.attributes['left'])
 
         if (height > 0) && (width > 0) && (top >= 0) && (left >= 0) && (top < Curses.lines) && (left < Curses.cols)
           if e.attributes['class'] == 'indicator'
@@ -1124,7 +1130,7 @@ key_action['send_command'] = proc {
     window.add_string("* ")
     Curses.doupdate
   elsif cmd =~ /^\.copy/
-    # fixme
+  # fixme
   elsif cmd =~ /^\.fixcolor/i
     COLOR_ID_LOOKUP.each { |code, id|
       Curses.init_color(id, ((code[0..1].to_s.hex / 255.0) * 1000).round, ((code[2..3].to_s.hex / 255.0) * 1000).round, ((code[4..5].to_s.hex / 255.0) * 1000).round)
@@ -1816,6 +1822,16 @@ begin
   key_combo = nil
   loop {
     ch = command_window.getch
+    # handle alt as a modifier
+    if ch == 27
+      next_ch = command_window.getch
+      if next_ch
+        # Eleazzar hack for using alt modifier
+        # 27 = alt key, 0 = hash collision avoidance, next_ch.ord = ascii table value for letter
+        ch = [27, 0, next_ch.ord].map(&:to_s).join.to_i
+      end
+    end
+
     # testing key inputs
     # if ch
     #   stream_handler['main'].add_string "KEY: " + ch.to_s
