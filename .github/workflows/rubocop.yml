@@ -23,7 +23,7 @@ jobs:
 
       - name: Get changed files
         id: changed-files
-        uses: tj-actions/changed-files@v44
+        uses: step-security/changed-files@3dbe17c78367e7d60f00d78ae6781a35be47b4a1
         with:
           files: |
             **/*.rb
@@ -32,7 +32,7 @@ jobs:
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: ${{ matrix.ruby }}
-          bundler-cache: true
+          bundler-cache: false
       - name: Install ruby gem dependencies with bundler
         run: |
           gem install bundler
