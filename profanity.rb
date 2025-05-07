@@ -440,9 +440,9 @@ load_layout = proc { |layout_id|
             window.scrollok(false)
             window.label = e.attributes['label'] if e.attributes['label']
             window.fg = e.attributes['fg'].split(',')
-                         .collect { |val| if val == 'nil'; nil; else; val; end  } if e.attributes['fg']
+                          .collect { |val| if val == 'nil'; nil; else; val; end  } if e.attributes['fg']
             window.bg = e.attributes['bg'].split(',')
-                         .collect { |val| if val == 'nil'; nil; else; val; end  } if e.attributes['bg']
+                          .collect { |val| if val == 'nil'; nil; else; val; end  } if e.attributes['bg']
             if e.attributes['value']
               indicator_handler[e.attributes['value']] = window
             end
@@ -670,18 +670,31 @@ key_action['resize'] = proc {
     end
     window.noutrefresh
   end
+
+  prompt_window = indicator_handler["prompt"]
+
   for window in [IndicatorWindow.list.to_a, ProgressWindow.list.to_a, CountdownWindow.list.to_a].flatten
-    if window.is_a?(IndicatorWindow) && window.label == prompt_text
-      window.resize(fix_layout_number.call(window.layout[0]), window.label.length)
+    if prompt_window and window.equal?(prompt_window)
+      init_prompt_height, _ = fix_layout_number.call(window.layout[0]), fix_layout_number.call(window.layout[1])
+      prompt_width = window.label.length
+      window.resize(init_prompt_height, prompt_width)
+      ctop, cleft = fix_layout_number.call(window.layout[2]), fix_layout_number.call(window.layout[3])
+      window.move(ctop, cleft)
+      window.noutrefresh
     else
       window.resize(fix_layout_number.call(window.layout[0]), fix_layout_number.call(window.layout[1]))
+      window.move(fix_layout_number.call(window.layout[2]), fix_layout_number.call(window.layout[3]))
+      window.noutrefresh
     end
-    window.move(fix_layout_number.call(window.layout[2]), fix_layout_number.call(window.layout[3]))
-    window.noutrefresh
   end
+
   if command_window
-    command_window.resize(fix_layout_number.call(command_window_layout[0]) + prompt_text.length, fix_layout_number.call(command_window_layout[1]) - prompt_text.length)
-    command_window.move(fix_layout_number.call(command_window_layout[2]), fix_layout_number.call(command_window_layout[3]))
+    _, init_prompt_width = fix_layout_number.call(prompt_window.layout[0]), fix_layout_number.call(prompt_window.layout[1])
+    prompt_width = prompt_window.label.length
+    prompt_width_diff = prompt_width - init_prompt_width
+    command_window.resize(fix_layout_number.call(command_window_layout[0]), fix_layout_number.call(command_window_layout[1]) - prompt_width_diff)
+    ctop, cleft = fix_layout_number.call(command_window_layout[2]), fix_layout_number.call(command_window_layout[3]) + prompt_width_diff
+    command_window.move(ctop, cleft)
     command_window.noutrefresh
   end
   Curses.doupdate
@@ -777,7 +790,7 @@ key_action['cursor_home'] = proc {
         f.puts "command_buffer_offset: #{command_buffer_offset.inspect}";
         f.puts "num: #{num.inspect}";
         f.puts $!;
-        f.puts $!.backtrace[0...4]
+               f.puts $!.backtrace[0...4]
       }
       exit
     end
@@ -1118,7 +1131,7 @@ key_action['send_command'] = proc {
     window.add_string("* ")
     Curses.doupdate
   elsif cmd =~ /^\.copy/
-    # fixme
+  # fixme
   elsif cmd =~ /^\.fixcolor/i
     COLOR_ID_LOOKUP.each { |code, id|
       Curses.init_color(id, ((code[0..1].to_s.hex / 255.0) * 1000).round, ((code[2..3].to_s.hex / 255.0) * 1000).round, ((code[4..5].to_s.hex / 255.0) * 1000).round)
